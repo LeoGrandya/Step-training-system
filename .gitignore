@@ -1,0 +1,36 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+
+# Project specific
+web_1/jobs/
+web_1/data/analysis_results/
+web_1/artifacts/
+*.log
+
+# Node
+node_modules/
+
+# Test deps
+.codex_test_deps/
+
+# Claude
+.claude/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Env (keep template only)
+.env
+!.env.example

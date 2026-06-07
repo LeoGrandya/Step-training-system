@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pose3d-project"
+version = "0.3.0"
+description = "Stereo 3D pose reconstruction package with MediaPipe only, augmented foot direction points, and body COM output"
+readme = "README.md"
+requires-python = ">=3.10"

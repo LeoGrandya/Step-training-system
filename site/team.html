@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>团队介绍 - AI-Sport Lab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="assets/css/main.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-blue': '#2563EB',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <div id="site-nav"></div>
+
+    <header class="py-20 bg-gradient-to-b from-blue-50 to-gray-50 text-center">
+        <h1 class="text-4xl font-black mb-4">核心研发团队</h1>
+        <p class="text-gray-500 max-w-2xl mx-auto">我们来自上海体育大学，致力于将尖端数据科学技术应用于竞技体育与大众健身。</p>
+    </header>
+
+    <main class="max-w-6xl mx-auto py-16 px-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300">
+                <div class="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold mb-6">AI</div>
+                <h3 class="text-xl font-bold mb-2">算法工程组</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">负责人体姿态估计模型的优化，利用 YOLO 与 MediaPipe 实现高精度的 3D 骨架提取与实时步法检测。</p>
+            </div>
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300">
+                <div class="w-12 h-12 bg-green-500 text-white rounded-2xl flex items-center justify-center font-bold mb-6">DS</div>
+                <h3 class="text-xl font-bold mb-2">数据科学组</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">专注运动学参数提取，分析重心位移（CoM）、步频及关节角度，为运动员提供量化的动力学分析报告。</p>
+            </div>
+            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-xl transition-all duration-300">
+                <div class="w-12 h-12 bg-purple-500 text-white rounded-2xl flex items-center justify-center font-bold mb-6">PM</div>
+                <h3 class="text-xl font-bold mb-2">产品研发组</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">统筹 AI 原型设计与硬件交互，构建基于 Flask 的高可用性训练系统及可视化管理平台。</p>
+            </div>
+        </div>
+
+        <div class="bg-gray-900 rounded-[3rem] p-12 text-white flex flex-col md:flex-row items-center justify-between">
+            <div class="md:w-1/2 mb-8 md:mb-0">
+                <h2 class="text-3xl font-bold mb-4">准备好升级你的训练了吗？</h2>
+                <p class="text-gray-400">无论是学术交流、项目合作还是技术反馈，我们随时欢迎你的联系。</p>
+                <div class="mt-8 space-y-2">
+                    <p class="text-sm flex items-center"><span class="w-4 h-4 mr-2 bg-blue-500 rounded-full"></span> 邮箱：contact@ai-sport-lab.edu.cn</p>
+                    <p class="text-sm flex items-center"><span class="w-4 h-4 mr-2 bg-green-500 rounded-full"></span> 地址：上海市杨浦区清源环路 650 号</p>
+                </div>
+            </div>
+            <div class="md:w-1/3 bg-white/10 backdrop-blur-lg p-8 rounded-3xl border border-white/20 w-full">
+                <h4 class="font-bold mb-4">提交合作意向</h4>
+                <input type="text" placeholder="您的姓名" class="w-full bg-transparent border-b border-white/30 py-2 mb-4 outline-none focus:border-white">
+                <textarea placeholder="描述您的需求" class="w-full bg-transparent border-b border-white/30 py-2 mb-6 outline-none focus:border-white h-20"></textarea>
+                <button class="w-full bg-white text-gray-900 py-3 rounded-xl font-bold hover:bg-blue-50 transition">发送消息</button>
+            </div>
+        </div>
+    </main>
+
+    <footer class="py-10 text-center text-gray-400 text-xs border-t border-gray-100">
+        © 2026 AI-Sport Lab · Shanghai University of Sport. All rights reserved.
+    </footer>
+    <script src="assets/js/main.js" defer></script>
+    <script src="assets/js/nav.js" defer></script>
+    <script src="assets/js/pages/team.js" defer></script>
+</body>
+</html>

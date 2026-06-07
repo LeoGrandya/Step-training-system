@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Sport Lab - 智能运动训练系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/main.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-blue': '#2563EB',
+                        'tech-cyan': '#00D4FF',
+                        'accent-orange': '#FF6B00',
+                        'success': '#10B981',
+                        'warning': '#F59E0B',
+                        'error': '#EF4444',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root {
+            --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', 'Microsoft YaHei', sans-serif; }
+        html, body { height: 100%; overflow-x: hidden; background: #f1f5f9; }
+        body { display: flex; flex-direction: column; min-height: 100vh; }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        @keyframes breathe {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+        @keyframes float-particle {
+            0% { transform: translateY(0) translateX(0); opacity: 0; }
+            50% { opacity: 0.4; }
+            100% { transform: translateY(-80px) translateX(30px); opacity: 0; }
+        }
+
+        .pulse-ring-light {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px solid #2563EB;
+            animation: pulse-ring 4s ease-out infinite;
+        }
+        .pulse-ring-light:nth-child(2) { animation-delay: 1s; border-color: #00D4FF; }
+        .pulse-ring-light:nth-child(3) { animation-delay: 2s; }
+        .pulse-ring-light:nth-child(4) { animation-delay: 3s; border-color: #FF6B00; }
+
+        .breathe { animation: breathe 3s ease-in-out infinite; }
+
+        .particle-light {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #2563EB;
+            border-radius: 50%;
+            animation: float-particle 8s linear infinite;
+            filter: blur(1px);
+        }
+
+        .typewriter-text {
+            opacity: 0;
+            transform: translateY(8px);
+            transition: all 0.6s ease;
+        }
+        .typewriter-text.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #2563EB, #00D4FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 overflow-x-hidden">
+    <div id="site-nav"></div>
+
+    <!-- ===== 首页内容 ===== -->
+    <section class="max-w-7xl mx-auto min-h-[calc(100vh-72px)] px-8 flex flex-col lg:flex-row items-center gap-12 py-12">
+        <div class="lg:w-1/2 space-y-10">
+            <div>
+                <h1 class="text-5xl lg:text-6xl font-black leading-[1.1] mb-6 text-gray-900">
+                    用数据科学<br><span class="text-brand-blue">重新定义</span>运动训练
+                </h1>
+                <p class="text-xl text-gray-500 leading-relaxed max-w-lg">
+                    基于双目视觉与 3D 动力学分析，为运动员提供实时步法指导与全方位体能监测报表。
+                </p>
+            </div>
+
+            <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-blue-100/50 space-y-3 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full bg-brand-blue"></div>
+                <div id="status-1" class="typewriter-text font-mono text-sm text-gray-400 flex items-center">
+                    <span class="w-2 h-2 bg-blue-400 rounded-full mr-3"></span> 正在初始化双目视觉系统...
+                </div>
+                <div id="status-2" class="typewriter-text font-mono text-sm text-gray-400 flex items-center">
+                    <span class="w-2 h-2 bg-tech-cyan rounded-full mr-3"></span> 正在校准 3D 空间坐标系...
+                </div>
+                <div id="status-3" class="typewriter-text font-mono text-sm text-gray-400 flex items-center">
+                    <span class="w-2 h-2 bg-accent-orange rounded-full mr-3"></span> 正在建立动力学分析模型...
+                </div>
+                <div id="status-4" class="typewriter-text font-mono text-sm text-green-600 font-bold flex items-center">
+                    <span class="w-2 h-2 bg-green-500 rounded-full mr-3 animate-pulse"></span> 系统就绪，数据流连接成功 ✓
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-4 pt-4">
+                <button id="btn-start" onclick="window.top.location.href='/#/training?selectMode=1'" class="bg-brand-blue text-white px-10 py-4 rounded-full text-lg font-bold hover:scale-105 transition shadow-lg shadow-blue-200">
+                    立即开始训练 →
+                </button>
+                <a href="/#/product" target="_top" class="border border-gray-200 text-gray-600 px-10 py-4 rounded-full text-lg font-medium hover:bg-gray-100 transition">了解更多</a>
+            </div>
+        </div>
+
+        <div class="lg:w-1/2 relative flex items-center justify-center">
+            <div id="particles-container" class="absolute inset-0 pointer-events-none"></div>
+            <div class="relative w-80 h-80 flex items-center justify-center">
+                <div class="pulse-ring-light w-64 h-64"></div>
+                <div class="pulse-ring-light w-64 h-64"></div>
+                <div class="pulse-ring-light w-64 h-64"></div>
+                <div class="pulse-ring-light w-64 h-64"></div>
+                <div class="absolute w-48 h-48 rounded-[3rem] bg-gradient-to-br from-blue-500 to-cyan-400 shadow-2xl shadow-blue-300 flex items-center justify-center breathe">
+                    <div class="text-white text-center">
+                        <div class="text-sm font-mono opacity-80 uppercase tracking-widest mb-1">Status</div>
+                        <div class="text-3xl font-black">ACTIVE</div>
+                    </div>
+                </div>
+            </div>
+            <div class="absolute top-10 right-10 bg-white/80 backdrop-blur p-4 rounded-2xl shadow-lg border border-white animate-bounce" style="animation-duration: 4s;">
+                <p class="text-[10px] font-bold text-gray-400 uppercase">Kinematics</p>
+                <p class="text-sm font-black text-brand-blue">98.5% Accuracy</p>
+            </div>
+        </div>
+    </section>
+
+    <script src="assets/js/main.js" defer></script>
+    <script src="assets/js/nav.js" defer></script>
+    <script src="assets/js/pages/home.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI-Sport Lab - 专业运动分析报告 | 肌肉力群3D交互</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- 3D 肌肉力群模型库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', 'Microsoft YaHei', sans-serif; }
+        body { background: #f1f5f9; overflow-x: hidden; }
+        .page-body { padding: 24px; min-height: calc(100vh - 70px); }
+        .report-container { max-width: 1500px; margin: 0 auto; }
+        
+        /* 报告头部样式 */
+        .report-header { background: white; border-radius: 28px; padding: 32px; display: flex; align-items: center; gap: 28px; margin-bottom: 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.05); flex-wrap: wrap; }
+        .report-badge { width: 88px; height: 88px; border-radius: 24px; background: linear-gradient(135deg, #00D4FF, #FF6B00); display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 800; color: white; }
+        .report-score { font-size: 64px; font-weight: 800; color: #0F172A; line-height: 1; }
+        .report-metrics { display: flex; gap: 48px; flex: 1; flex-wrap: wrap; }
+        .report-metric { text-align: center; }
+        .report-metric-value { font-size: 28px; font-weight: 800; }
+        .report-metric-label { font-size: 14px; color: #64748B; letter-spacing: 0.5px; }
+        .btn-primary { padding: 12px 24px; border-radius: 14px; border: none; background: #00D4FF; color: white; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 6px rgba(0,212,255,0.3); }
+        .btn-secondary { padding: 12px 24px; border-radius: 14px; border: 1px solid #E2E8F0; background: white; color: #475569; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-primary:hover { background: #0bb5e0; transform: translateY(-2px); }
+        .btn-secondary:hover { background: #F8FAFC; }
+        
+        /* 标签页 */
+        .report-tabs { display: flex; gap: 12px; margin-bottom: 28px; background: white; padding: 8px 12px; border-radius: 60px; width: fit-content; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
+        .report-tab { padding: 10px 28px; border-radius: 40px; font-size: 15px; font-weight: 600; color: #64748B; cursor: pointer; transition: all 0.25s; }
+        .report-tab.active { background: linear-gradient(90deg, #00D4FF, #FF6B00); color: white; box-shadow: 0 6px 14px rgba(0,212,255,0.25); }
+        
+        /* 图表卡片 - 更大更舒适 */
+        .chart-card { background: white; border-radius: 24px; padding: 28px 24px; box-shadow: 0 8px 20px rgba(0,0,0,0.04); height: auto; display: flex; flex-direction: column; transition: all 0.2s; }
+        .chart-card h3 { font-size: 18px; font-weight: 700; color: #0F172A; margin-bottom: 20px; letter-spacing: -0.2px; border-left: 5px solid #00D4FF; padding-left: 14px; }
+        .chart-inner { height: 280px; width: 100%; }
+        .grid-charts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; }
+        @media (max-width: 1200px) { .grid-charts { grid-template-columns: 1fr; } }
+        
+        /* AI 圆点建议 - 彩色小圆点，不同文字颜色 */
+        .ai-analyze { margin-top: 20px; padding: 16px 20px; background: linear-gradient(105deg, #f0f9ff 0%, #fef9f0 100%); border-radius: 20px; border-left: 4px solid #FF6B00; }
+        .ai-analyze strong { display: block; font-size: 14px; color: #1e293b; margin-bottom: 10px; }
+        .ai-analyze ul { list-style: none; padding-left: 0; margin: 0; }
+        .ai-analyze li { position: relative; padding-left: 28px; margin-bottom: 12px; font-size: 13px; line-height: 1.45; color: #334155; font-weight: 500; }
+        .ai-analyze li::before { content: "●"; position: absolute; left: 8px; top: 0; font-size: 14px; color: #00D4FF; text-shadow: 0 0 2px rgba(0,212,255,0.5); }
+        .ai-analyze li:nth-child(1)::before { color: #FF6B00; }  /* 第一项橙色圆点 */
+        .ai-analyze li:nth-child(2)::before { color: #10B981; } /* 第二项绿色 */
+        .ai-analyze li:nth-child(3)::before { color: #8B5CF6; } /* 第三项紫色 */
+        .ai-analyze li span.highlight { color: #FF6B00; font-weight: 700; background: rgba(255,107,0,0.1); padding: 2px 6px; border-radius: 20px; }
+        
+        /* 历史记录 */
+        .history-item { padding: 18px 20px; background: #fff; border-radius: 20px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.04); transition: 0.2s; border: 1px solid #eef2ff; }
+        .history-item:hover { transform: translateX(6px); background: #F8FAFC; border-color: #00D4FF40; }
+        
+        /* 损伤风险 3D 肌肉力群容器 */
+        #human3dBox { width: 100%; height: 580px; background: radial-gradient(circle at 30% 20%, #11151f, #0a0c14); border-radius: 32px; position: relative; overflow: hidden; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.4); cursor: grab; border: 1px solid rgba(0,212,255,0.2); }
+        #human3dBox:active { cursor: grabbing; }
+        .warn-light { position: absolute; top: 24px; right: 24px; width: 52px; height: 52px; border-radius: 50%; background: #2d3748; z-index: 30; transition: all 0.2s; border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+        .warn-light.alert { background: #ef4444; box-shadow: 0 0 0 0 #ef4444; animation: pulseRed 0.9s infinite alternate; }
+        @keyframes pulseRed { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); transform: scale(0.98);} 100% { box-shadow: 0 0 0 12px rgba(239,68,68,0); transform: scale(1.05);} }
+        
+        .joint-info-panel { background: rgba(10, 15, 25, 0.85); backdrop-filter: blur(12px); border-radius: 20px; padding: 16px 20px; color: white; font-size: 14px; position: absolute; bottom: 20px; left: 20px; right: 20px; z-index: 30; border-left: 5px solid #FF6B00; pointer-events: none; font-weight: 500; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+        .joint-info-panel strong { color: #FFD966; }
+        .joint-detail-value { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; background: rgba(0,212,255,0.2); padding: 2px 10px; border-radius: 40px; display: inline-block; margin-top: 6px; letter-spacing: 0.5px; }
+        
+        .toast-host { position: fixed; right: 18px; bottom: 18px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+        .toast-item { padding: 10px 18px; border-radius: 40px; font-size: 13px; font-weight: 500; color: #fff; box-shadow: 0 8px 20px rgba(0,0,0,0.2); animation: toast-in 180ms ease; backdrop-filter: blur(4px); }
+        .toast-item.success { background: #10B981; }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        
+        @media (max-width: 768px) {
+            .report-header { flex-direction: column; align-items: flex-start; }
+            .joint-info-panel { font-size: 12px; padding: 12px 16px; }
+            .chart-inner { height: 220px; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="page-body">
+        <div class="report-container">
+            <!-- 头部信息 -->
+            <div class="report-header">
+                <div class="report-badge">AI</div>
+                <div><div class="report-score" id="report-score">870</div><div style="font-size: 16px; color: #94A3B8;">/ 1000分制</div></div>
+                <div class="report-metrics">
+                    <div class="report-metric"><div class="report-metric-value" id="metric-reaction" style="color: #00D4FF;">245ms</div><div class="report-metric-label">平均反应时间</div></div>
+                    <div class="report-metric"><div class="report-metric-value" id="metric-accuracy" style="color: #10B981;">92%</div><div class="report-metric-label">步伐到位率</div></div>
+                    <div class="report-metric"><div class="report-metric-value" id="metric-dtw" style="color: #F59E0B;">87%</div><div class="report-metric-label">DTW相似度</div></div>
+                </div>
+                <div class="flex gap-3"><button class="btn-primary" id="exportPdfBtn">导出报告</button><button class="btn-secondary" id="exportCsvBtn">导出数据</button></div>
+            </div>
+            
+            <!-- 标签栏 -->
+            <div class="report-tabs">
+                <span class="report-tab active" data-tab="diagnosis">📊 动作诊断</span>
+                <span class="report-tab" data-tab="history">📂 历史报告</span>
+                <span class="report-tab" data-tab="injury">🧬 损伤风险监测 · 肌肉力群3D</span>
+            </div>
+            
+            <!-- 1.动作诊断页面 - 图表放大+AI圆点建议 -->
+            <div id="tab-diagnosis" class="tab-content">
+                <div class="grid-charts mt-4">
+                    <div class="chart-card"><h3>表1. 各类步法峰值移动速度对比 (m/s)</h3><div class="chart-inner"><canvas id="chart1"></canvas></div><div class="ai-analyze" data-ai-chart="chart1"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                    <div class="chart-card"><h3>表2. 实战回合移动速度时序曲线</h3><div class="chart-inner"><canvas id="chart2"></canvas></div><div class="ai-analyze" data-ai-chart="chart2"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                    <div class="chart-card"><h3>表3. 膝踝关节角度时序耦合</h3><div class="chart-inner"><canvas id="chart3"></canvas></div><div class="ai-analyze" data-ai-chart="chart3"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                    <div class="chart-card"><h3>表4. 下肢关节瞬时角速度变化</h3><div class="chart-inner"><canvas id="chart4"></canvas></div><div class="ai-analyze" data-ai-chart="chart4"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                    <div class="chart-card"><h3>表5. 受试者与专业选手关节能力对比</h3><div class="chart-inner"><canvas id="chart5"></canvas></div><div class="ai-analyze" data-ai-chart="chart5"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                    <div class="chart-card"><h3>表6. 多方向变向灵敏素质雷达图</h3><div class="chart-inner"><canvas id="chart6"></canvas></div><div class="ai-analyze" data-ai-chart="chart6"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                    <div class="chart-card"><h3>表7. 步法综合能力评分</h3><div class="chart-inner"><canvas id="chart7"></canvas></div><div class="ai-analyze" data-ai-chart="chart7"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                    <div class="chart-card"><h3>表8. 日常训练步法使用结构占比</h3><div class="chart-inner"><canvas id="chart8"></canvas></div><div class="ai-analyze" data-ai-chart="chart8"><strong>🧠 AI 智能分析</strong><ul></ul></div></div>
+                </div>
+            </div>
+            
+            <!-- 2.历史报告查询页面 -->
+            <div id="tab-history" class="tab-content" style="display:none;">
+                <div class="chart-card p-6"><h3 class="text-lg mb-4 font-semibold">📌 历史运动分析档案</h3><div class="flex gap-4 mb-6"><input type="date" id="historyDate" class="px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-cyan-300"><button class="btn-primary" id="filterHistoryBtn">筛选查询</button></div><div id="historyList" class="history-list"></div></div>
+            </div>
+            
+            <!-- 3.损伤风险页面：高精度肌肉力群3D模型 + 可交互关节显示用户指定建议 -->
+            <div id="tab-injury" class="tab-content" style="display:none;">
+                <div class="chart-card p-0 overflow-hidden relative" style="padding:0; background:transparent; box-shadow:none;">
+                    <div id="human3dBox" style="position:relative;">
+                        <div class="warn-light" id="riskLight"></div>
+                        <div id="jointInfoPanel" class="joint-info-panel">
+                            🧠 <strong>肌肉力群交互系统</strong> · 点击任意发光关节球体查看角度偏差 & 专项建议<br>
+                            <span id="selectedJointName" style="font-weight:600;">当前关节</span> : 
+                            <span id="selectedJointAngle" class="joint-detail-value">—</span>
+                            <span id="riskBadge" style="margin-left:12px;"></span>
+                        </div>
+                    </div>
+                    <div class="mt-5 ai-analyze" id="injury-ai-insights" style="margin:20px 0 0 0; background: linear-gradient(105deg, #fff6e8, #ffeef4);">
+                        <strong>⚡ 肌肉力群损伤风险评估 (基于实时生物力学)</strong>
+                        <ul></ul>
+                        <p class="text-xs text-gray-600 mt-2">💡 3D肌肉力群模型：拖拽旋转/缩放，点击彩色关节点获取详细角度与康复方案。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="toast-host" id="toastHost"></div>
+    <script src="assets/js/main.js" defer></script>
+    <script src="assets/js/pages/report.js" defer></script>
+</body>
+</html>

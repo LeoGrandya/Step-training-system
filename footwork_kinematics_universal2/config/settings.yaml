@@ -1,0 +1,33 @@
+input_csv: "session_001/pair_003/pose3d_abs_filtered_zup_ground0.csv"
+fps: 60.0
+output_dir: "./输出结果"
+
+ground_z:
+grid:
+  cell_size_m: 0.9
+  total_size_m: 2.7
+  center_xy:
+
+plots:
+  single_metrics:
+    - com_speed_mps
+    - com_horizontal_speed_mps
+    - com_acceleration_mps2
+    - motion_turning_speed_deg_s
+    - left_clearance_m
+    - right_clearance_m
+    - left_knee_angle_deg
+    - right_knee_angle_deg
+    - left_ankle_sagittal_angle_deg
+    - right_ankle_sagittal_angle_deg
+  overview_metrics:
+    - com_speed_mps
+    - com_horizontal_speed_mps
+    - com_acceleration_mps2
+    - motion_turning_speed_deg_s
+    - left_clearance_m
+    - right_clearance_m
+    - left_knee_angle_deg
+    - right_knee_angle_deg
+    - left_ankle_sagittal_angle_deg
+    - right_ankle_sagittal_angle_deg
