@@ -57,14 +57,36 @@ function writeSessionValue(key, value) {
 }
 
 export function hasSession() {
+  if (getCurrentAccountId()) return true;
   const userId = getCurrentUserId();
   if (userId) return true;
   const session = readJson(STORAGE_KEYS.session, null);
-  if (session?.loggedIn && session?.userId) {
-    setCurrentUserId(String(session.userId));
-    return true;
+  if (session?.loggedIn) {
+    if (session?.accountId) {
+      setCurrentAccountId(String(session.accountId));
+      return true;
+    }
+    if (session?.userId) {
+      setCurrentUserId(String(session.userId));
+      return true;
+    }
   }
   return false;
+}
+
+export function loginAccountSession(account) {
+  writeJson(STORAGE_KEYS.session, {
+    loggedIn: true,
+    accountId: account.id || '',
+    loginAt: nowIso(),
+  });
+  setCurrentAccountId(account.id || '');
+}
+
+export function logoutAccountSession() {
+  window.localStorage.removeItem(STORAGE_KEYS.session);
+  setCurrentAccountId('');
+  setCurrentUserId('');
 }
 
 export function getCurrentUserId() {

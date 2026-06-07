@@ -208,11 +208,11 @@ export const RESOURCE_DEFINITIONS = [
     owner: '金彦廷',
     endpoint: '/api/v1/accounts',
     description: '最小 RBAC 的登录账号，不等同于受试者。',
-    columns: ['username', 'displayName', 'status', 'updatedAt'],
+    columns: ['account', 'username', 'status', 'updatedAt'],
     fields: [
-      textField('username', '用户名', { required: true }),
+      textField('account', '账号', { required: true }),
       textField('passwordHash', '密码哈希', { required: true }),
-      textField('displayName', '显示名', { required: true }),
+      textField('username', '用户名', { required: true }),
       selectField('status', '状态', {
         options: [
           { value: 'active', label: 'active' },
@@ -278,7 +278,8 @@ export const COLUMN_LABELS = {
   score: '评分',
   grade: '等级',
   username: '用户名',
-  displayName: '显示名',
+  account: '账号',
+  displayName: '用户名',
 };
 
 export const LOOKUP_RESOURCES = Object.fromEntries(RESOURCE_DEFINITIONS.map((item) => [item.key, item]));

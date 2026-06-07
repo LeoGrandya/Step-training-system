@@ -99,3 +99,32 @@ export function createCustomFootwork(payload) {
 export function deleteCustomFootwork(itemId) {
   return request(`/api/custom-footworks/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
 }
+
+// Auth
+export function registerAccount(payload) {
+  return request('/api/v1/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loginAccount(payload) {
+  return request('/api/v1/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getAccountMe() {
+  return request('/api/v1/auth/me');
+}
+
+export function changePassword(payload) {
+  return request('/api/v1/auth/password', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}

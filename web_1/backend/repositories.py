@@ -1817,8 +1817,8 @@ def get_analysis_result_record(result_id: str) -> dict[str, Any] | None:
 def serialize_account(row: Account) -> dict[str, Any]:
     return {
         "id": row.id,
+        "account": row.account,
         "username": row.username,
-        "displayName": row.display_name,
         "status": row.status,
         "createdAt": _iso(row.created_at),
         "updatedAt": _iso(row.updated_at),
@@ -1855,7 +1855,7 @@ def list_accounts_page(
         query = query.filter(Account.status == status.strip())
     if keyword:
         pattern = f"%{keyword.strip()}%"
-        query = query.filter(or_(Account.username.like(pattern), Account.display_name.like(pattern)))
+        query = query.filter(or_(Account.account.like(pattern), Account.username.like(pattern)))
     query = query.order_by(Account.created_at.desc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_account(row) for row in rows], total
@@ -1867,44 +1867,42 @@ def get_account_payload(account_id: str) -> dict[str, Any] | None:
 
 
 def _account_values_from_payload(payload: dict[str, Any], *, existing: Account | None = None) -> dict[str, Any]:
-    username = str(payload.get("username", existing.username if existing else "") or "").strip()
+    account = str(payload.get("account", existing.account if existing else "") or "").strip()
     password_hash = str(payload.get("passwordHash", existing.password_hash if existing else "") or "").strip()
-    display_name = _clean_text(payload.get("displayName", existing.display_name if existing else ""))
+    username = _clean_text(payload.get("username", existing.username if existing else ""))
     status = str(payload.get("status", existing.status if existing else "active") or "active").strip()
+    if not account:
+        raise ValueError("account_required")
     if not username:
         raise ValueError("username_required")
-    if not password_hash:
-        raise ValueError("password_hash_required")
-    if not display_name:
-        raise ValueError("display_name_required")
     if not status:
         raise ValueError("status_required")
     return {
-        "username": username,
+        "account": account,
         "password_hash": password_hash,
-        "display_name": display_name,
+        "username": username,
         "status": status,
     }
 
 
-def _ensure_username_available(*, account_id: str | None, username: str) -> None:
-    query = Account.query.filter(Account.username == username)
+def _ensure_account_available(*, account_id: str | None, account: str) -> None:
+    query = Account.query.filter(Account.account == account)
     if account_id:
         query = query.filter(Account.id != account_id)
     if query.first() is not None:
-        raise DuplicateRecordError("duplicate_username")
+        raise DuplicateRecordError("duplicate_account")
 
 
 def create_account_record(payload: dict[str, Any]) -> dict[str, Any]:
     values = _account_values_from_payload(payload)
-    _ensure_username_available(account_id=None, username=values["username"])
+    _ensure_account_available(account_id=None, account=values["account"])
     row = Account(id=_new_id("acct"), **values)
     db.session.add(row)
     try:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_username") from exc
+        raise DuplicateRecordError("duplicate_account") from exc
     return serialize_account(row)
 
 
@@ -1913,7 +1911,7 @@ def update_account_record(account_id: str, payload: dict[str, Any]) -> dict[str,
     if row is None:
         return None
     values = _account_values_from_payload(payload, existing=row)
-    _ensure_username_available(account_id=account_id, username=values["username"])
+    _ensure_account_available(account_id=account_id, account=values["account"])
     for key, value in values.items():
         setattr(row, key, value)
     row.updated_at = now_utc()
@@ -1921,7 +1919,7 @@ def update_account_record(account_id: str, payload: dict[str, Any]) -> dict[str,
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_username") from exc
+        raise DuplicateRecordError("duplicate_account") from exc
     return serialize_account(row)
 
 

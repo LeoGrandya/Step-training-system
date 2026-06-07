@@ -33,9 +33,9 @@ class Account(db.Model):
     __tablename__ = "accounts"
 
     id = db.Column(db.String(32), primary_key=True)
-    username = db.Column(db.String(120), nullable=False, unique=True)
+    account = db.Column(db.String(120), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
-    display_name = db.Column(db.String(120), nullable=False)
+    username = db.Column(db.String(120), nullable=False)
     status = db.Column(db.String(24), nullable=False, default="active", index=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)

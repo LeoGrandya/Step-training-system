@@ -6,11 +6,23 @@
       <RouterView />
     </main>
   </div>
+  <AuthGuardModal ref="authModal" />
 </template>
 
 <script setup>
+import { ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import SiteNav from './components/SiteNav.vue';
+import AuthGuardModal from './components/AuthGuardModal.vue';
+import { authGuardRedirect } from './router/guard.js';
 
 const route = useRoute();
+const authModal = ref(null);
+
+watch(authGuardRedirect, (path) => {
+  if (path && authModal.value) {
+    authModal.value.show(path);
+    authGuardRedirect.value = '';
+  }
+});
 </script>
