@@ -1,9 +1,14 @@
 <!-- 运行时必需。历史报告页：筛选 + 卡片网格 + 对比。 -->
 <template>
-  <section class="page-stack report-history-page">
-    <header class="analysis-header">
-      <h1>历史报告</h1>
+  <section class="rpt-page">
+    <header class="rpt-hd">
+      <div>
+        <p class="rpt-hd__eyebrow">Step Training</p>
+        <h1 class="rpt-hd__title">历史报告</h1>
+      </div>
     </header>
+
+    <hr class="rpt-divider" />
 
     <ReportFilterBar
       :userId="userId"
@@ -15,14 +20,12 @@
       @reset="resetFilters"
     />
 
-    <p v-if="error" class="analysis-page__error">{{ error }}</p>
+    <p v-if="error" class="rpt-err">{{ error }}</p>
 
-    <div v-if="loading" class="report-history__state">加载中...</div>
-    <div v-else-if="!reports.length" class="report-history__state report-history__state--empty">
-      暂无历史报告，完成一次分析后自动生成
-    </div>
+    <div v-if="loading" class="rpt-state">加载中...</div>
+    <div v-else-if="!reports.length" class="rpt-state rpt-state--empty">暂无历史报告，完成一次分析后自动生成</div>
 
-    <div v-else class="report-grid">
+    <div v-else class="rpt-grid">
       <ReportCard
         v-for="report in reports"
         :key="report.id"
@@ -33,26 +36,17 @@
       />
     </div>
 
-    <div v-if="selectedIds.length" class="report-compare-bar">
-      <span class="report-compare-bar__label">已选 {{ selectedIds.length }} 份</span>
-      <span class="report-compare-bar__limit">对比上限 {{ maxCompare }} 份</span>
-      <div class="report-compare-bar__actions">
-        <button type="button" class="report-compare-bar__btn report-compare-bar__btn--clear" @click="clearSelection">清除</button>
-        <button
-          type="button"
-          class="report-compare-bar__btn report-compare-bar__btn--compare"
-          :disabled="selectedIds.length < 2"
-          @click="openCompare"
-        >对比分析</button>
+    <Transition name="cmp-bar">
+      <div v-if="selectedIds.length" class="rpt-cmp">
+        <span class="rpt-cmp__label">已选 {{ selectedIds.length }} 份（上限 {{ maxCompare }} 份）</span>
+        <div class="rpt-cmp__actions">
+          <button type="button" class="rpt-cmp__btn rpt-cmp__btn--clr" @click="clearSelection">清除</button>
+          <button type="button" class="rpt-cmp__btn rpt-cmp__btn--go" :disabled="selectedIds.length < 2" @click="openCompare">对比分析</button>
+        </div>
       </div>
-    </div>
+    </Transition>
 
-    <ReportCompareModal
-      :open="compareOpen"
-      :data="compareData"
-      :loading="compareLoading"
-      @close="compareOpen = false"
-    />
+    <ReportCompareModal :open="compareOpen" :data="compareData" :loading="compareLoading" @close="compareOpen = false" />
   </section>
 </template>
 
@@ -62,11 +56,11 @@ import ReportFilterBar from '../components/ReportFilterBar.vue'
 import ReportCard from '../components/ReportCard.vue'
 import ReportCompareModal from '../components/ReportCompareModal.vue'
 import { useReportHistory } from '../composables/useReportHistory.js'
-import { getCurrentUserId, STORAGE_KEYS } from '../stores/storage.js'
+import { getCurrentSubjectId } from '../stores/storage.js'
 
 const { reports, users, userProfile, loading, error, fetchUsers, fetchUserProfile, fetchReports, deleteReport, compareReports } = useReportHistory()
 
-const userId = ref(getCurrentUserId() || '')
+const userId = ref(getCurrentSubjectId() || '')
 const selectedIds = ref([])
 const filters = ref({ mode: '', startDate: '', endDate: '', stepName: '' })
 const compareOpen = ref(false)
@@ -146,3 +140,73 @@ onMounted(async () => {
   await loadData()
 })
 </script>
+
+<style scoped>
+.rpt-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 40px 48px;
+}
+.rpt-hd__eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 4px;
+}
+.rpt-hd__title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.rpt-divider {
+  border: none;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  margin: 20px 0 24px;
+}
+.rpt-err { font-size: 14px; color: #dc2626; margin: 0 0 16px; }
+.rpt-state { font-size: 14px; color: #94a3b8; padding: 32px 0; }
+.rpt-state--empty { text-align: center; }
+
+.rpt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.rpt-cmp {
+  position: sticky;
+  bottom: 20px;
+  margin-top: 24px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 10px;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+.rpt-cmp__label { font-size: 13px; color: #475569; font-weight: 500; }
+.rpt-cmp__actions { display: flex; gap: 8px; }
+.rpt-cmp__btn {
+  border: none;
+  padding: 8px 22px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.rpt-cmp__btn--clr { background: #f1f5f9; color: #475569; }
+.rpt-cmp__btn--clr:hover { background: #e2e8f0; }
+.rpt-cmp__btn--go { background: #2563eb; color: #fff; }
+.rpt-cmp__btn--go:hover:not(:disabled) { background: #1d4ed8; }
+.rpt-cmp__btn--go:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.cmp-bar-enter-active, .cmp-bar-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.cmp-bar-enter-from, .cmp-bar-leave-to { opacity: 0; transform: translateY(8px); }
+</style>

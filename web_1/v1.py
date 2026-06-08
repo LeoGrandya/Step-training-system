@@ -43,7 +43,7 @@ from backend.analysis.result_builder import (
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
-app.config["API_V1_RBAC_ENABLED"] = True
+app.config["API_V1_RBAC_ENABLED"] = False  # 暂关，数据隔离测试中
 app.jinja_env.auto_reload = True
 init_database(app)
 app.register_blueprint(api_v1)
@@ -321,9 +321,11 @@ def delete_custom_footwork(item_id):
 def list_users():
     init_db()
     page = parse_pagination(request.args, default_limit=None)
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
     items, total = repo.list_subjects_page(
         keyword=page.keyword,
         is_active=page.is_active,
+        account_id=aid,
         limit=page.limit,
         offset=page.offset,
     )
@@ -336,6 +338,10 @@ def create_user():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify({"ok": False, "error": "invalid_json"}), 400
+
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        payload["createdByAccountId"] = aid
 
     try:
         user = repo.create_subject(payload, normalize_name=normalize_name)

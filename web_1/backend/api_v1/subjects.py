@@ -1,4 +1,4 @@
-"""Subjects API."""
+"""Subjects API — 受试者操作限定在当前登录账号的数据范围内。"""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from flask import Blueprint, request
 
 from backend import repositories as repo
 from backend.api_utils import json_err, json_ok, list_response, parse_pagination
+from backend.models import Subject
 
 
 def _json_payload():
@@ -16,7 +17,27 @@ def _json_payload():
 
 
 def _normalize_name(value):
-    return " ".join(str(value or "").strip().split())
+    name = " ".join(str(value or "").strip().split())
+    if name and not _is_valid_name(name):
+        raise ValueError("invalid_name_format")
+    return name
+
+def _is_valid_name(name):
+    import re
+    return bool(re.match(r'^[一-鿿㐀-䶿a-zA-Z\s]+$', name))
+
+
+def _account_id() -> str | None:
+    return (request.headers.get("X-Account-Id") or "").strip() or None
+
+
+def _check_ownership(subject_id: str, account_id: str) -> bool:
+    row = Subject.query.filter(Subject.id == subject_id, Subject.is_active.is_(True)).first()
+    if row is None:
+        return None
+    if row.created_by_account_id and row.created_by_account_id != account_id:
+        return False
+    return True
 
 
 def register(bp: Blueprint) -> None:
@@ -26,6 +47,7 @@ def register(bp: Blueprint) -> None:
         items, total = repo.list_subjects_page(
             keyword=page.keyword,
             is_active=page.is_active,
+            account_id=_account_id(),
             limit=page.limit,
             offset=page.offset,
         )
@@ -36,6 +58,11 @@ def register(bp: Blueprint) -> None:
         payload = _json_payload()
         if payload is None:
             return json_err("invalid_json", 400)
+        aid = _account_id()
+        if aid:
+            payload["createdByAccountId"] = aid
+        else:
+            payload["createdByAccountId"] = payload.get("createdByAccountId")
         try:
             item = repo.create_subject(payload, normalize_name=_normalize_name)
         except ValueError as exc:
@@ -54,6 +81,13 @@ def register(bp: Blueprint) -> None:
         payload = _json_payload()
         if payload is None:
             return json_err("invalid_json", 400)
+        aid = _account_id()
+        if aid:
+            ok = _check_ownership(subject_id, aid)
+            if ok is None:
+                return json_err("not_found", 404)
+            if not ok:
+                return json_err("permission_denied", 403)
         try:
             updated = repo.update_subject(subject_id, payload, normalize_name=_normalize_name)
         except ValueError as exc:
@@ -65,6 +99,13 @@ def register(bp: Blueprint) -> None:
 
     @bp.delete("/subjects/<subject_id>")
     def delete_subject(subject_id: str):
+        aid = _account_id()
+        if aid:
+            ok = _check_ownership(subject_id, aid)
+            if ok is None:
+                return json_err("not_found", 404)
+            if not ok:
+                return json_err("permission_denied", 403)
         if not repo.soft_delete_subject(subject_id):
             return json_err("not_found", 404)
         return json_ok()

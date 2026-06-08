@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
   currentJobId: 'ai_sport_lab.current_job_id',
   currentUserId: 'pp-current-user-id',
   currentAccountId: 'ai_sport_lab.current_account_id',
+  currentSubjectId: 'ai_sport_lab.current_subject_id',
   hardwareFeedback: 'ai_sport_lab.hardware_feedback',
   trainingPrefs: 'ai_sport_lab.training_prefs',
   pose3dProfile: 'pp-footwork-base-profile',
@@ -87,6 +88,7 @@ export function logoutAccountSession() {
   window.localStorage.removeItem(STORAGE_KEYS.session);
   setCurrentAccountId('');
   setCurrentUserId('');
+  setCurrentSubjectId('');
 }
 
 export function getCurrentUserId() {
@@ -126,6 +128,26 @@ export function setCurrentAccountId(accountId) {
     }
   } catch {
     // localStorage may be blocked in embedded contexts.
+  }
+}
+
+export function getCurrentSubjectId() {
+  try {
+    return window.localStorage.getItem(STORAGE_KEYS.currentSubjectId) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setCurrentSubjectId(subjectId) {
+  try {
+    if (subjectId) {
+      window.localStorage.setItem(STORAGE_KEYS.currentSubjectId, subjectId);
+    } else {
+      window.localStorage.removeItem(STORAGE_KEYS.currentSubjectId);
+    }
+  } catch {
+    // localStorage may be blocked.
   }
 }
 

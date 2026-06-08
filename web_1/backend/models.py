@@ -24,6 +24,7 @@ class Subject(db.Model):
     years = db.Column(db.Integer, nullable=False, default=0)
     level = db.Column(db.String(32), nullable=False, default="amateur")
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_by_account_id = db.Column(db.String(32), db.ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=now_utc)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
     deleted_at = db.Column(db.DateTime(timezone=True))

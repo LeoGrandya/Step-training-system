@@ -45,20 +45,55 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { notifyTrainingModeSelected, setTrainingHasMode } from '../guides/guideScheduler.js';
 import { replayTrainingGuide } from '../guides/trainingGuide.js';
 import ProfileForm from '../components/ProfileForm.vue';
 import TrainingGrid from '../components/TrainingGrid.vue';
-import { getProfile, getTrainingMode, saveProfile, saveTrainingMode, getCurrentUserId } from '../stores/storage.js';
-import { syncUserProfile } from '../services/users.js';
+import { getProfile, getTrainingMode, saveProfile, saveTrainingMode, getCurrentSubjectId } from '../stores/storage.js';
+import { request } from '../services/api.js';
 
 const route = useRoute();
 const router = useRouter();
 const profile = ref(getProfile());
 const selectedMode = ref(route.query.selectMode ? '' : getTrainingMode());
 const editingProfile = ref(!profile.value.name);
+
+async function loadSubjectProfile() {
+  const subjectId = getCurrentSubjectId();
+  if (!subjectId) return;
+  try {
+    const response = await fetch(`/api/users/${encodeURIComponent(subjectId)}`);
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload.ok && payload.user) {
+      const u = payload.user;
+      const p = {
+        name: u.name || '',
+        age: u.age ?? 25,
+        heightCm: u.heightCm ?? 170,
+        weightKg: u.weightKg ?? 65,
+        hand: u.hand || 'right',
+        years: u.years ?? 0,
+        level: u.level || 'amateur',
+      };
+      profile.value = p;
+      saveProfile(p); // 同步到本地缓存
+      editingProfile.value = !p.name;
+    }
+  } catch {}
+}
+
+async function saveProfileToAPI(nextProfile) {
+  const subjectId = getCurrentSubjectId();
+  if (subjectId) {
+    await request(`/api/users/${encodeURIComponent(subjectId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(nextProfile),
+    });
+  }
+}
 
 const modes = [
   { value: 'eval', kicker: 'Eval', label: '练习评估', desc: '开放步伐配置，训练后保留视频分析入口。' },
@@ -100,21 +135,24 @@ function replayGuide() {
   });
 }
 
-onMounted(() => {
+onMounted(async () => {
   setTrainingHasMode(() => Boolean(selectedMode.value));
+  await loadSubjectProfile();
+  window.addEventListener('subject-changed', loadSubjectProfile);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('subject-changed', loadSubjectProfile);
 });
 
 watch(selectedMode, () => {
   setTrainingHasMode(() => Boolean(selectedMode.value));
 });
 
-function saveProfileAndClose(nextProfile) {
+async function saveProfileAndClose(nextProfile) {
   profile.value = saveProfile(nextProfile);
   editingProfile.value = false;
   if (selectedMode.value) saveTrainingMode(selectedMode.value, { baseLevel: profile.value.level || '' });
-  const userId = getCurrentUserId();
-  if (userId) {
-    syncUserProfile(userId, profile.value).catch(() => {});
-  }
+  await saveProfileToAPI(nextProfile);
 }
 </script>

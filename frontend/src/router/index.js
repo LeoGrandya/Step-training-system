@@ -3,12 +3,13 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import AccountView from '../views/AccountView.vue';
 import AuthView from '../views/AuthView.vue';
 import AnalysisView from '../views/AnalysisView.vue';
+import CreateSubjectView from '../views/CreateSubjectView.vue';
 import DataManagementView from '../views/DataManagementView.vue';
 import LegacyHtmlView from '../views/LegacyHtmlView.vue';
 import ReportHistoryView from '../views/ReportHistoryView.vue';
 import TrainingView from '../views/TrainingView.vue';
 import { scheduleGuideForRoute } from '../guides/guideScheduler.js';
-import { hasSession } from '../stores/storage.js';
+import { hasSession, getCurrentAccountId } from '../stores/storage.js';
 import { authGuardRedirect } from './guard.js';
 
 const routes = [
@@ -20,6 +21,7 @@ const routes = [
   { path: '/data-management', component: DataManagementView, meta: { requiresAuth: true } },
   { path: '/report-history', component: ReportHistoryView, meta: { requiresAuth: true } },
   { path: '/account', component: AccountView, meta: { requiresAuth: true } },
+  { path: '/create-subject', component: CreateSubjectView, meta: { requiresAuth: true } },
   { path: '/loading', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'loading.html', requiresAuth: true } },
   { path: '/report/:jobId?', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'report.html', requiresAuth: true } },
   { path: '/settings', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'settings.html', requiresAuth: true } },
@@ -32,6 +34,28 @@ const router = createRouter({
   routes,
 });
 
+let subjectCache = { count: -1, checkedAt: 0 };
+
+async function accountHasSubjects() {
+  const aid = getCurrentAccountId();
+  if (!aid) return false;
+  // 缓存 10 秒避免每次路由切换都请求
+  if (subjectCache.count >= 0 && Date.now() - subjectCache.checkedAt < 10000) {
+    return subjectCache.count > 0;
+  }
+  try {
+    const response = await fetch('/api/v1/subjects?limit=1', {
+      headers: { 'X-Account-Id': aid },
+    });
+    const payload = await response.json().catch(() => ({}));
+    subjectCache.count = payload.total || 0;
+    subjectCache.checkedAt = Date.now();
+    return subjectCache.count > 0;
+  } catch {
+    return false;
+  }
+}
+
 router.beforeEach(async (to, from) => {
   if (from.path === '/analysis' && to.path !== '/analysis') {
     try {
@@ -39,9 +63,7 @@ router.beforeEach(async (to, from) => {
         const shouldLeave = window.confirm('视频正在上传，离开页面可能中断提交，确定要离开吗？');
         if (!shouldLeave) return false;
       }
-    } catch (error) {
-      // ignore sessionStorage errors
-    }
+    } catch (error) {}
   }
 
   if (!to.meta.requiresAuth) return true;
@@ -49,6 +71,12 @@ router.beforeEach(async (to, from) => {
   if (!hasSession()) {
     authGuardRedirect.value = to.fullPath;
     return false;
+  }
+
+  // 已登录但无受试者 → 引导创建（跳过 create-subject 自身和 account 页）
+  if (to.path !== '/create-subject' && to.path !== '/account') {
+    const hasSubjects = await accountHasSubjects();
+    if (!hasSubjects) return { path: '/create-subject' };
   }
 
   return true;

@@ -248,6 +248,7 @@ def serialize_subject(subject: Subject) -> dict[str, Any]:
         "hand": subject.hand,
         "years": subject.years,
         "level": subject.level,
+        "createdByAccountId": subject.created_by_account_id,
         "createdAt": _iso(subject.created_at),
         "updatedAt": _iso(subject.updated_at),
     }
@@ -262,11 +263,14 @@ def list_subjects_page(
     *,
     keyword: str | None = None,
     is_active: bool | None = None,
+    account_id: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     query = Subject.query
     query = active_filter(query, Subject, is_active=is_active)
+    if account_id:
+        query = query.filter(Subject.created_by_account_id == account_id)
     query = keyword_filter(query, Subject, Subject.name, keyword)
     query = query.order_by(Subject.name.asc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
@@ -395,6 +399,8 @@ def create_subject(payload: dict[str, Any], *, normalize_name) -> dict[str, Any]
     except (TypeError, ValueError) as exc:
         raise ValueError("invalid_data") from exc
 
+    created_by = payload.get("createdByAccountId") or None
+
     subject = Subject(
         id=_new_id("usr"),
         name=name,
@@ -404,6 +410,7 @@ def create_subject(payload: dict[str, Any], *, normalize_name) -> dict[str, Any]
         hand=str(payload.get("hand", "right")).lower(),
         years=years,
         level=str(payload.get("level", "amateur")),
+        created_by_account_id=created_by,
     )
     db.session.add(subject)
     db.session.commit()
@@ -1927,6 +1934,13 @@ def delete_account_record(account_id: str) -> bool:
     row = Account.query.filter(Account.id == account_id).first()
     if row is None:
         return False
+    # 级联软删该账号创建的所有受试者
+    subjects = Subject.query.filter(
+        Subject.created_by_account_id == account_id,
+        Subject.is_active.is_(True),
+    ).all()
+    for sub in subjects:
+        apply_soft_delete(sub)
     AccountRole.query.filter(AccountRole.account_id == account_id).delete()
     db.session.delete(row)
     db.session.commit()

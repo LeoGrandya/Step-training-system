@@ -1,4 +1,4 @@
-<!-- 运行时必需。拖拽上传区：支持拖放/点击选择视频文件。 -->
+<!-- 运行时必需。拖拽上传区：Linear 风格干净卡面。 -->
 <template>
   <div
     class="upload-zone"
@@ -10,6 +10,7 @@
     @dragover.prevent="onDragOver"
     @dragleave.prevent="onDragLeave"
     @drop.prevent="onDrop"
+    @click="clickInput"
   >
     <input
       v-if="!file"
@@ -20,15 +21,16 @@
       @change="onFileChange"
     />
 
+    <!-- 空状态 -->
     <div v-if="!file" class="upload-zone__empty">
-      <span class="upload-zone__crosshair">⌖</span>
+      <span class="upload-zone__cam-icon">{{ camera === 'left' ? '●' : '●' }}</span>
       <span class="upload-zone__camera-label">{{ camera === 'left' ? '左机位' : '右机位' }}</span>
       <span class="upload-zone__hint">拖放视频文件或点击选择</span>
-      <span class="upload-zone__spec">{{ accept }}</span>
     </div>
 
+    <!-- 已选文件 -->
     <div v-else class="upload-zone__file-card">
-      <span class="upload-zone__file-icon">&#9654;</span>
+      <svg class="upload-zone__file-check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       <div class="upload-zone__file-info">
         <span class="upload-zone__file-name">{{ file.name }}</span>
         <span class="upload-zone__file-meta">
@@ -36,12 +38,7 @@
           <template v-if="duration > 0"> &middot; {{ formatDuration(duration) }}</template>
         </span>
       </div>
-      <button
-        type="button"
-        class="upload-zone__clear"
-        @click.stop="clearFile"
-        aria-label="清除文件"
-      >&times;</button>
+      <button type="button" class="upload-zone__clear" @click.stop="clearFile" aria-label="清除">&times;</button>
     </div>
   </div>
 </template>
@@ -84,6 +81,10 @@ function probeDuration(videoFile) {
     URL.revokeObjectURL(url)
   }
   video.src = url
+}
+
+function clickInput() {
+  if (!file.value && fileInput.value) fileInput.value.click()
 }
 
 function onDragOver(e) {
@@ -144,3 +145,106 @@ function formatDuration(sec) {
   return m + ':' + String(s).padStart(2, '0')
 }
 </script>
+
+<style scoped>
+.upload-zone {
+  position: relative;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.upload-zone:hover {
+  border-color: rgba(0,0,0,0.14);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.upload-zone--dragover {
+  border-color: #2563eb;
+  background: #f0f5ff;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+}
+.upload-zone--has-file {
+  border-color: rgba(0,0,0,0.06);
+  cursor: default;
+}
+.upload-zone--invalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.upload-zone__input { position: absolute; opacity: 0; pointer-events: none; }
+
+.upload-zone__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 20px;
+}
+.upload-zone__cam-icon {
+  font-size: 22px;
+  color: #2563eb;
+  opacity: 0.6;
+  margin-bottom: 2px;
+}
+.upload-zone__camera-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: 0.02em;
+}
+.upload-zone__hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.upload-zone__file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  width: 100%;
+}
+.upload-zone__file-check { flex-shrink: 0; }
+.upload-zone__file-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.upload-zone__file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upload-zone__file-meta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.upload-zone__clear {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  color: #94a3b8;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s;
+}
+.upload-zone__clear:hover { color: #dc2626; background: #fef2f2; }
+</style>
