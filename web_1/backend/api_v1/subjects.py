@@ -44,10 +44,14 @@ def register(bp: Blueprint) -> None:
     @bp.get("/subjects")
     def list_subjects():
         page = parse_pagination(request.args, default_limit=30)
+        hand = (request.args.get("hand") or "").strip() or None
+        level = (request.args.get("level") or "").strip() or None
         items, total = repo.list_subjects_page(
             keyword=page.keyword,
             is_active=page.is_active,
             account_id=_account_id(),
+            hand=hand,
+            level=level,
             limit=page.limit,
             offset=page.offset,
         )

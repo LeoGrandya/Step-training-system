@@ -21,11 +21,18 @@ function jsonField(key, label, extra = {}) {
   return { key, label, type: 'json', ...extra };
 }
 
+// 每个资源定义说明：
+//   endpoint      — API 路径前缀（CRUD 自动拼 /{id}）
+//   columns       — 表格展示列
+//   fields        — 新增/编辑表单字段
+//   filterFields  — 筛选条件（可选）
+//   supportsKeyword — 后端是否支持 ?keyword= 搜索（当前全部支持）
+//   creatable / editable / deletable — 默认 true，可设为 false 禁用
+
 export const RESOURCE_DEFINITIONS = [
   {
     key: 'subjects',
     title: '受试者',
-    owner: '陈彦竹',
     endpoint: '/api/v1/subjects',
     description: '训练、分析、评估全链路的受试者基础信息。',
     columns: ['name', 'age', 'hand', 'level', 'years', 'updatedAt'],
@@ -36,15 +43,15 @@ export const RESOURCE_DEFINITIONS = [
       numberField('weightKg', '体重 kg'),
       selectField('hand', '持拍手', {
         options: [
-          { value: 'right', label: '右手' },
-          { value: 'left', label: '左手' },
+          { value: '右手', label: '右手' },
+          { value: '左手', label: '左手' },
         ],
       }),
       selectField('level', '水平', {
         options: [
-          { value: 'amateur', label: '业余' },
-          { value: 'level-2', label: '二级' },
-          { value: 'level-1', label: '一级' },
+          { value: '业余', label: '业余' },
+          { value: '二级', label: '二级' },
+          { value: '一级', label: '一级' },
         ],
       }),
       numberField('years', '训练年限'),
@@ -52,15 +59,15 @@ export const RESOURCE_DEFINITIONS = [
     filterFields: [
       selectField('hand', '持拍手', {
         options: [
-          { value: 'right', label: '右手' },
-          { value: 'left', label: '左手' },
+          { value: '右手', label: '右手' },
+          { value: '左手', label: '左手' },
         ],
       }),
       selectField('level', '水平', {
         options: [
-          { value: 'amateur', label: '业余' },
-          { value: 'level-2', label: '二级' },
-          { value: 'level-1', label: '一级' },
+          { value: '业余', label: '业余' },
+          { value: '二级', label: '二级' },
+          { value: '一级', label: '一级' },
         ],
       }),
     ],
@@ -68,9 +75,9 @@ export const RESOURCE_DEFINITIONS = [
   {
     key: 'footwork-types',
     title: '基础步伐',
-    owner: '陈彦竹',
     endpoint: '/api/v1/footwork-types',
     description: '所有路线、训练配置和评估记录复用的步伐字典。',
+    deletable: false,
     columns: ['code', 'name', 'category', 'defaultStartCell', 'defaultSequence', 'updatedAt'],
     fields: [
       textField('code', '编码', { required: true }),
@@ -80,12 +87,18 @@ export const RESOURCE_DEFINITIONS = [
       textField('defaultSequence', '默认序列'),
       textareaField('description', '说明'),
     ],
-    filterFields: [textField('category', '分类')],
+    filterFields: [
+      selectField('category', '分类', {
+        options: [
+          { value: '基础步伐', label: '基础步伐' },
+          { value: '步法模式', label: '步法模式' },
+        ],
+      }),
+    ],
   },
   {
     key: 'routes',
     title: '自定义跑动序列',
-    owner: '雷润华',
     endpoint: '/api/v1/routes',
     description: '步伐训练路线、跑动序列、节奏和动作要求。',
     columns: ['name', 'footworkTypeId', 'sequence', 'startCell', 'isCustom', 'updatedAt'],
@@ -94,7 +107,7 @@ export const RESOURCE_DEFINITIONS = [
       selectField('footworkTypeId', '关联步伐', { lookup: 'footwork-types' }),
       textField('sequence', '路线序列', { required: true, placeholder: '1,5,9,5' }),
       numberField('startCell', '起始宫格', { required: true, min: 1, max: 9 }),
-      jsonField('rhythm', '节奏 JSON', { placeholder: '{"defaultMs":750}' }),
+      numberField('defaultMs', '默认步间隔（ms）', { min: 100, max: 5000, placeholder: '750' }),
       textareaField('actionRequirements', '动作要求'),
     ],
     filterFields: [selectField('footworkTypeId', '关联步伐', { lookup: 'footwork-types' })],
@@ -102,7 +115,6 @@ export const RESOURCE_DEFINITIONS = [
   {
     key: 'training-configs',
     title: '训练配置',
-    owner: '金彦廷',
     endpoint: '/api/v1/training-configs',
     description: '运动员、步伐、路线和训练参数的组合配置。',
     columns: ['subjectId', 'footworkTypeId', 'routeDefinitionId', 'mode', 'analysisProfile', 'updatedAt'],
@@ -112,16 +124,16 @@ export const RESOURCE_DEFINITIONS = [
       selectField('routeDefinitionId', '训练路线', { lookup: 'routes' }),
       selectField('mode', '训练模式', {
         options: [
-          { value: 'eval', label: '练习评估' },
-          { value: 'free', label: '自由练习' },
-          { value: 'test', label: '能力测试' },
+          { value: '练习评估', label: '练习评估' },
+          { value: '自由练习', label: '自由练习' },
+          { value: '能力测试', label: '能力测试' },
         ],
       }),
       selectField('analysisProfile', '分析档位', {
         options: [
-          { value: 'fast', label: 'fast' },
-          { value: 'balanced', label: 'balanced' },
-          { value: 'quality', label: 'quality' },
+          { value: '快速', label: '快速' },
+          { value: '均衡', label: '均衡' },
+          { value: '高质量', label: '高质量' },
         ],
       }),
       numberField('stepIntervalMs', '步间隔 ms'),
@@ -135,9 +147,9 @@ export const RESOURCE_DEFINITIONS = [
       selectField('routeDefinitionId', '训练路线', { lookup: 'routes' }),
       selectField('mode', '训练模式', {
         options: [
-          { value: 'eval', label: '练习评估' },
-          { value: 'free', label: '自由练习' },
-          { value: 'test', label: '能力测试' },
+          { value: '练习评估', label: '练习评估' },
+          { value: '自由练习', label: '自由练习' },
+          { value: '能力测试', label: '能力测试' },
         ],
       }),
     ],
@@ -145,33 +157,27 @@ export const RESOURCE_DEFINITIONS = [
   {
     key: 'training-videos',
     title: '训练视频',
-    owner: '金彦廷',
     endpoint: '/api/v1/training-videos',
-    description: '视频文件仍在文件系统，MySQL 只保存路径、状态和关联关系。',
-    columns: ['subjectId', 'trainingConfigId', 'leftOriginalName', 'rightOriginalName', 'status', 'createdAt'],
-    creatable: false,
+    description: '训练视频原始资源与左右机位文件信息，供运动学数据回溯。',
+    hidden: true,
+    columns: ['subjectId', 'trainingConfigId', 'leftOriginalName', 'rightOriginalName', 'createdAt'],
     fields: [
-      selectField('subjectId', '受试者', { lookup: 'subjects' }),
+      selectField('subjectId', '受试者', { lookup: 'subjects', required: true }),
       selectField('trainingConfigId', '训练配置', { lookup: 'training-configs' }),
-      textField('leftVideoPath', '左机位路径'),
-      textField('rightVideoPath', '右机位路径'),
-      textField('leftOriginalName', '左机位文件名'),
-      textField('rightOriginalName', '右机位文件名'),
-      textField('status', '状态'),
+      textField('leftOriginalName', '左机位原始文件'),
+      textField('rightOriginalName', '右机位原始文件'),
     ],
     filterFields: [
       selectField('subjectId', '受试者', { lookup: 'subjects' }),
       selectField('trainingConfigId', '训练配置', { lookup: 'training-configs' }),
-      textField('status', '状态'),
     ],
   },
   {
     key: 'kinematics-datasets',
     title: '运动学数据',
-    owner: '许婉其',
     endpoint: '/api/v1/kinematics-datasets',
-    description: '分析完成后的 CSV/JSON 产物索引和关键摘要。',
-    columns: ['subjectId', 'jobId', 'trainingVideoId', 'frameMetricsPath', 'sessionSummaryPath', 'createdAt'],
+    description: '分析完成的运动学结果，含受试者、步法、评分与原始视频播放。',
+    columns: ['subjectName', 'stepName', 'mode', 'profile', 'grade', 'leftVideoName', 'rightVideoName', 'createdAt'],
     creatable: false,
     editable: false,
     deletable: false,
@@ -181,7 +187,6 @@ export const RESOURCE_DEFINITIONS = [
   {
     key: 'evaluations',
     title: '效果评估',
-    owner: '郝雨萱',
     endpoint: '/api/v1/evaluations',
     description: '基于运动学数据的训练效果评估记录。',
     columns: ['subjectId', 'analysisJobId', 'kinematicsDatasetId', 'score', 'grade', 'createdAt'],
@@ -205,18 +210,17 @@ export const RESOURCE_DEFINITIONS = [
   {
     key: 'accounts',
     title: '账号',
-    owner: '金彦廷',
     endpoint: '/api/v1/accounts',
-    description: '最小 RBAC 的登录账号，不等同于受试者。',
+    description: '最小 RBAC 的登录账号，不等同于受试者。注册通过登录页完成。',
     columns: ['account', 'username', 'status', 'updatedAt'],
+    creatable: false,  // 创建账号走注册流程，此处仅管理已有账号
     fields: [
       textField('account', '账号', { required: true }),
-      textField('passwordHash', '密码哈希', { required: true }),
       textField('username', '用户名', { required: true }),
       selectField('status', '状态', {
         options: [
-          { value: 'active', label: 'active' },
-          { value: 'disabled', label: 'disabled' },
+          { value: '启用', label: '启用' },
+          { value: '禁用', label: '禁用' },
         ],
       }),
     ],
@@ -224,7 +228,6 @@ export const RESOURCE_DEFINITIONS = [
   {
     key: 'roles',
     title: '角色',
-    owner: '金彦廷',
     endpoint: '/api/v1/roles',
     description: '最小权限模型中的角色集合。',
     columns: ['code', 'name'],
@@ -233,7 +236,6 @@ export const RESOURCE_DEFINITIONS = [
   {
     key: 'permissions',
     title: '权限',
-    owner: '金彦廷',
     endpoint: '/api/v1/permissions',
     description: '后端接口权限点字典。',
     columns: ['code', 'name'],
@@ -280,6 +282,11 @@ export const COLUMN_LABELS = {
   username: '用户名',
   account: '账号',
   displayName: '用户名',
+  subjectName: '受试者',
+  stepName: '步伐名称',
+  profile: '分析档位',
+  leftVideoName: '左机位视频',
+  rightVideoName: '右机位视频',
 };
 
 export const LOOKUP_RESOURCES = Object.fromEntries(RESOURCE_DEFINITIONS.map((item) => [item.key, item]));

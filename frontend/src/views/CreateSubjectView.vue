@@ -44,7 +44,7 @@ import { setCurrentSubjectId } from '../stores/storage.js';
 import { refreshLoginState } from '../router/guard.js';
 
 const router = useRouter();
-const form = reactive({ name: '', age: null, heightCm: null, weightKg: null, hand: 'right', years: 0, level: 'amateur' });
+const form = reactive({ name: '', age: null, heightCm: null, weightKg: null, hand: '右手', years: 0, level: '业余' });
 const submitting = ref(false);
 const message = ref('');
 const isError = ref(false);

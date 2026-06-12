@@ -1,4 +1,3 @@
-﻿"""运行时必需。读取 pose3d 导出 CSV。"""
 from pathlib import Path
 import pandas as pd
 
@@ -38,6 +37,27 @@ def find_first_column(df: pd.DataFrame, candidates):
     return None
 
 
+def _wide_to_long(df: pd.DataFrame, frame_col: str) -> pd.DataFrame:
+    columns = {str(col): col for col in df.columns}
+    joints = []
+    for name in columns:
+        if not name.endswith("_x"):
+            continue
+        joint = name[:-2]
+        if f"{joint}_y" in columns and f"{joint}_z" in columns:
+            joints.append(joint)
+    if not joints:
+        raise ValueError("输入 CSV 缺少必要列: ['joint', 'x', 'y', 'z']")
+
+    parts = []
+    for joint in sorted(joints):
+        part = df[[frame_col, columns[f"{joint}_x"], columns[f"{joint}_y"], columns[f"{joint}_z"]]].copy()
+        part.columns = ["frame_id", "x", "y", "z"]
+        part["joint_name"] = normalize_joint_name(joint)
+        parts.append(part)
+    return pd.concat(parts, ignore_index=True)[["frame_id", "joint_name", "x", "y", "z"]]
+
+
 def load_pose3d_long(csv_path, fps: float = 60.0) -> pd.DataFrame:
     csv_path = Path(csv_path)
     if not csv_path.exists():
@@ -50,6 +70,14 @@ def load_pose3d_long(csv_path, fps: float = 60.0) -> pd.DataFrame:
     x_col = find_first_column(df, ["x", "X"])
     y_col = find_first_column(df, ["y", "Y"])
     z_col = find_first_column(df, ["z", "Z"])
+
+    if frame_col is not None and (joint_col is None or x_col is None or y_col is None or z_col is None):
+        df = _wide_to_long(df, frame_col)
+        frame_col = "frame_id"
+        joint_col = "joint_name"
+        x_col = "x"
+        y_col = "y"
+        z_col = "z"
 
     missing = [k for k, v in {
         "frame": frame_col,
@@ -80,5 +108,9 @@ def load_pose3d_long(csv_path, fps: float = 60.0) -> pd.DataFrame:
         .reset_index(drop=True)
     )
 
+    source_frames = sorted(df["frame_id"].dropna().astype(int).unique().tolist())
+    frame_map = {source_frame: idx for idx, source_frame in enumerate(source_frames)}
+    df["source_frame_id"] = df["frame_id"].astype(int)
+    df["frame_id"] = df["source_frame_id"].map(frame_map).astype(int)
     df["time_s"] = df["frame_id"] / float(fps)
     return df

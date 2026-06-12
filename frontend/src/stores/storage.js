@@ -18,7 +18,7 @@ export const STORAGE_KEYS = {
 };
 
 const POSE3D_STORAGE_VERSION = 1;
-const ALLOWED_TRAINING_MODES = ['eval', 'free', 'test'];
+const ALLOWED_TRAINING_MODES = ['练习评估', '自由练习', '能力测试'];
 
 export function createDefaultProfile() {
   return {

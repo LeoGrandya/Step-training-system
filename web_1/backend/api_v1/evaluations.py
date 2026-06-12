@@ -25,6 +25,24 @@ def _int_query(name: str) -> int | None:
         return None
 
 
+def _account_id() -> str | None:
+    return (request.headers.get("X-Account-Id") or "").strip() or None
+
+
+def _account_subject_ids() -> list[str] | None:
+    aid = _account_id()
+    if not aid:
+        return None
+    return repo._subject_ids_for_account(aid)  # 空列表→无数据
+
+
+def _check_ownership(subject_id: str) -> bool | None:
+    aid = _account_id()
+    if not aid:
+        return True
+    return repo.check_subject_ownership(subject_id, aid)
+
+
 def register(bp: Blueprint) -> None:
     @bp.get("/evaluations")
     def list_evaluations():
@@ -32,6 +50,7 @@ def register(bp: Blueprint) -> None:
         items, total = repo.list_evaluations_page(
             keyword=page.keyword,
             subject_id=(request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None,
+            subject_ids=_account_subject_ids(),
             analysis_job_id=(request.args.get("analysisJobId") or request.args.get("analysis_job_id") or "").strip()
             or None,
             kinematics_dataset_id=(
@@ -57,6 +76,13 @@ def register(bp: Blueprint) -> None:
         payload = _json_payload()
         if payload is None:
             return json_err("invalid_json", 400)
+        sid = payload.get("subjectId") or payload.get("subject_id")
+        if sid:
+            ok = _check_ownership(sid)
+            if ok is None:
+                return json_err("subject_not_found", 404)
+            if not ok:
+                return json_err("permission_denied", 403)
         try:
             item = repo.create_evaluation_record(payload)
         except ValueError as exc:
@@ -70,6 +96,11 @@ def register(bp: Blueprint) -> None:
         item = repo.get_evaluation_payload(evaluation_id)
         if item is None:
             return json_err("not_found", 404)
+        sid = item.get("subjectId")
+        if sid:
+            ok = _check_ownership(sid)
+            if ok is False:
+                return json_err("permission_denied", 403)
         return json_ok(item=item)
 
     @bp.put("/evaluations/<evaluation_id>")
@@ -77,6 +108,14 @@ def register(bp: Blueprint) -> None:
         payload = _json_payload()
         if payload is None:
             return json_err("invalid_json", 400)
+        item = repo.get_evaluation_payload(evaluation_id)
+        if item is None:
+            return json_err("not_found", 404)
+        sid = item.get("subjectId")
+        if sid:
+            ok = _check_ownership(sid)
+            if ok is False:
+                return json_err("permission_denied", 403)
         try:
             item = repo.update_evaluation_record(evaluation_id, payload)
         except ValueError as exc:
@@ -89,6 +128,14 @@ def register(bp: Blueprint) -> None:
 
     @bp.delete("/evaluations/<evaluation_id>")
     def delete_evaluation(evaluation_id: str):
+        item = repo.get_evaluation_payload(evaluation_id)
+        if item is None:
+            return json_err("not_found", 404)
+        sid = item.get("subjectId")
+        if sid:
+            ok = _check_ownership(sid)
+            if ok is False:
+                return json_err("permission_denied", 403)
         if not repo.delete_evaluation_record(evaluation_id):
             return json_err("not_found", 404)
         return json_ok()

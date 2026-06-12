@@ -9,7 +9,7 @@ import {
   createDefaultTrainingPrefs,
   STORAGE_KEYS,
 } from '../src/stores/storage.js';
-import { NAV_ITEMS } from '../src/router/nav.js';
+import { NAV_ITEMS, TRAINING_DROPDOWN } from '../src/router/nav.js';
 import {
   DEFAULT_FULL_TABLE_STEP_COUNT,
   DEFAULT_LOOP_COUNTS,
@@ -46,7 +46,11 @@ test('default profile has the fields required by the training page', () => {
 test('Vue nav keeps the same official order', () => {
   assert.deepEqual(
     NAV_ITEMS.map((item) => item.label),
-    ['首页', '产品介绍', '训练模式', '视频上传分析', '数据管理', '历史报告', '团队介绍', '登录/注册'],
+    ['首页', '产品介绍', '团队介绍'],
+  );
+  assert.deepEqual(
+    TRAINING_DROPDOWN.map((item) => item.label),
+    ['训练模式', '视频上传分析', '数据管理', '历史报告'],
   );
 });
 
@@ -60,6 +64,7 @@ test('data management page exposes the MySQL v1 resource workbench', () => {
   assert.equal(existsSync(servicePath), true);
   assert.match(router, /import DataManagementView/);
   assert.match(router, /path:\s*'\/data-management',\s*component:\s*DataManagementView/);
+  assert.match(navItems, /TRAINING_DROPDOWN/);
   assert.match(navItems, /数据管理/);
 
   const view = readFileSync(viewPath, 'utf8');
@@ -108,7 +113,7 @@ test('only non-business legacy html pages keep iframe sources', () => {
   assert.doesNotMatch(router, /legacyFile:\s*'auth\.html'/);
   assert.doesNotMatch(router, /legacyFile:\s*'training\.html'/);
 
-  for (const file of ['home.html', 'product.html', 'loading.html', 'report.html', 'settings.html', 'team.html']) {
+  for (const file of ['home.html', 'product.html', 'loading.html', 'settings.html', 'team.html']) {
     assert.match(view, new RegExp(file.replace('.', '\\.')));
   }
   assert.doesNotMatch(view, /upload\.html/);
@@ -270,7 +275,10 @@ test('Vue business nav matches the legacy home nav structure and styling hooks',
   assert.match(nav, /慧步乒乓/);
   assert.match(readFileSync(resolve(appRoot, 'index.html'), 'utf8'), /<title>慧步乒乓<\/title>/);
   assert.match(nav, /site-nav__auth/);
-  assert.match(navItems, /auth:\s*true/);
+  assert.match(nav, /site-nav__dropdown-trigger/);
+  assert.match(nav, /脚步训练/);
+  assert.match(navItems, /TRAINING_DROPDOWN/);
+  assert.doesNotMatch(navItems, /auth:\s*true/);
 
   assert.match(styles, /\.site-nav[\s\S]*box-shadow:\s*0 1px 2px/);
   assert.match(styles, /\.site-nav[\s\S]*position:\s*sticky/);
@@ -728,4 +736,42 @@ test('risk fixes wire training config upload and custom route display metadata',
 
   assert.match(adminData, /training-stats/);
   assert.match(adminData, /filterFields/);
+});
+
+test('pose3d report route uses the new real-data dashboard', () => {
+  const router = readFileSync(resolve(appRoot, 'src/router/index.js'), 'utf8');
+  const viewPath = resolve(appRoot, 'src/views/PingpongReportView.vue');
+  const adapterPath = resolve(appRoot, 'src/services/reportAdapter.js');
+
+  assert.equal(existsSync(viewPath), true);
+  assert.equal(existsSync(adapterPath), true);
+  assert.match(router, /import PingpongReportView/);
+  assert.match(router, /path:\s*'\/report\/:jobId\?'/);
+  assert.match(router, /component:\s*PingpongReportView/);
+  assert.doesNotMatch(router, /path:\s*'\/report\/:jobId\?'[\s\S]*legacyFile:\s*'report\.html'/);
+
+  const view = readFileSync(viewPath, 'utf8');
+  const adapter = readFileSync(adapterPath, 'utf8');
+  assert.match(view, /getAnalysisResult/);
+  assert.match(view, /getReportUi/);
+  assert.match(view, /buildPose3dReportModel/);
+  assert.match(view, /StatsOverview/);
+  assert.match(view, /FootworkHeatmap/);
+  assert.match(view, /RadarMetrics/);
+  assert.match(view, /FootPressure/);
+  assert.match(view, /TablePlacement/);
+  assert.match(view, /PeriodTiming/);
+  assert.match(view, /DisplacementTrajectory/);
+  assert.match(view, /SpeedAcceleration/);
+  assert.match(view, /FlightParameters/);
+  assert.match(view, /JointBiomechanics/);
+  assert.match(view, /EfficiencyEvaluation/);
+  assert.match(view, /ComparisonComprehensive/);
+
+  assert.match(adapter, /summaryMetrics/);
+  assert.match(adapter, /derivedStats/);
+  assert.match(adapter, /qualityFlags/);
+  assert.match(adapter, /timeseries/);
+  assert.match(adapter, /universal2/);
+  assert.doesNotMatch(view + adapter, /Math\.random|mock|fixture|hardcoded/i);
 });

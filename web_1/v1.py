@@ -359,6 +359,13 @@ def create_user():
 @app.route("/api/users/<user_id>", methods=["GET"])
 def get_user(user_id):
     init_db()
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        ok = repo.check_subject_ownership(user_id, aid)
+        if ok is None:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        if not ok:
+            return jsonify({"ok": False, "error": "permission_denied"}), 403
     user = repo.get_subject_payload(user_id)
     if user is None:
         return jsonify({"ok": False, "error": "not_found"}), 404
@@ -377,6 +384,14 @@ def update_user(user_id):
     if not isinstance(payload, dict):
         return jsonify({"ok": False, "error": "invalid_json"}), 400
 
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        ok = repo.check_subject_ownership(user_id, aid)
+        if ok is None:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        if not ok:
+            return jsonify({"ok": False, "error": "permission_denied"}), 403
+
     try:
         updated = repo.update_subject(user_id, payload, normalize_name=normalize_name)
     except ValueError as exc:
@@ -390,6 +405,13 @@ def update_user(user_id):
 @app.route("/api/users/<user_id>", methods=["DELETE"])
 def delete_user(user_id):
     init_db()
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        ok = repo.check_subject_ownership(user_id, aid)
+        if ok is None:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        if not ok:
+            return jsonify({"ok": False, "error": "permission_denied"}), 403
     if not repo.soft_delete_subject(user_id):
         return jsonify({"ok": False, "error": "not_found"}), 404
     return jsonify({"ok": True})
@@ -474,7 +496,7 @@ def create_analysis_job():
             profile = json.loads(profile_raw)
         except json.JSONDecodeError:
             return jsonify({"ok": False, "error": "invalid_profile_json"}), 400
-    analysis_profile_name = normalize_profile_name(request.form.get("analysis_profile") or "fast")
+    analysis_profile_name = normalize_profile_name(request.form.get("analysis_profile") or "快速")
     analysis_profile = get_profile(analysis_profile_name)
     sync_overrides, sync_err = _parse_sync_overrides(request.form)
     
@@ -540,8 +562,8 @@ def create_analysis_job():
         stride = resolve_frame_stride(analysis_profile.pose3d, source_fps)
         stride_factor = 1.0 / max(1, stride)
         base_mult = (
-            2.8 if analysis_profile.name == "fast"
-            else (4.5 if analysis_profile.name == "balanced" else 6.0)
+            2.8 if analysis_profile.name == "快速"
+            else (4.5 if analysis_profile.name == "均衡" else 6.0)
         )
         estimated = round(duration_s * base_mult * stride_factor, 1)
     probe_fps = probe.get("fps")
@@ -689,6 +711,16 @@ def get_analysis_result(job_id):
     rm = meta.get("report_mode")
     if rm in ("eval", "practice", "test"):
         cfg["mode"] = rm
+    # 注入受试者信息，使报告页标题展示用户可读的名称而非 job ID
+    user_id = meta.get("user_id")
+    if isinstance(user_id, str) and user_id.strip():
+        cfg["subjectId"] = user_id.strip()
+        try:
+            sub = repo.get_subject_payload(user_id.strip())
+            if sub and sub.get("displayName"):
+                cfg["subjectName"] = sub["displayName"]
+        except Exception:
+            cfg["subjectName"] = user_id.strip()
     if cfg:
         payload["config"] = cfg
     payload = sanitize_for_json(payload)
@@ -814,6 +846,14 @@ def list_reports():
     if not user_id:
         return jsonify({"ok": False, "error": "user_id_required"}), 400
 
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        ok = repo.check_subject_ownership(user_id, aid)
+        if ok is None:
+            return jsonify({"ok": False, "error": "user_not_found"}), 404
+        if not ok:
+            return jsonify({"ok": False, "error": "permission_denied"}), 403
+
     mode = request.args.get("mode")
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -851,6 +891,13 @@ def list_reports():
 @app.route("/api/reports/<report_id>", methods=["GET"])
 def get_report(report_id):
     init_db()
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        ok = repo.check_report_ownership(report_id, aid)
+        if ok is None:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        if not ok:
+            return jsonify({"ok": False, "error": "permission_denied"}), 403
     report = repo.get_report_payload(report_id)
     if report is None:
         return jsonify({"ok": False, "error": "not_found"}), 404
@@ -897,6 +944,13 @@ def create_report():
 @app.route("/api/reports/<report_id>", methods=["DELETE"])
 def delete_report(report_id):
     init_db()
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        ok = repo.check_report_ownership(report_id, aid)
+        if ok is None:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        if not ok:
+            return jsonify({"ok": False, "error": "permission_denied"}), 403
     if not repo.delete_report_record(report_id):
         return jsonify({"ok": False, "error": "not_found"}), 404
     return jsonify({"ok": True})
@@ -913,6 +967,14 @@ def compare_reports():
         return jsonify({"ok": False, "error": "at_least_two_ids_required"}), 400
 
     init_db()
+    aid = (request.headers.get("X-Account-Id") or "").strip() or None
+    if aid:
+        for rid in report_ids:
+            ok = repo.check_report_ownership(rid, aid)
+            if ok is None:
+                return jsonify({"ok": False, "error": "report_not_found"}), 404
+            if not ok:
+                return jsonify({"ok": False, "error": "permission_denied"}), 403
     reports_data = repo.compare_report_records(report_ids)
 
     return jsonify({

@@ -9,6 +9,85 @@ import numpy as np
 import pandas as pd
 
 
+LEGACY_STEP_COLUMNS = [
+    "step_id",
+    "foot_side",
+    "start_frame",
+    "end_frame",
+    "duration_s",
+    "swing_time_s",
+    "stance_time_s",
+    "step_move_distance_m",
+    "step_horizontal_path_m",
+    "step_length_m",
+    "step_length_3d_m",
+    "stride_length_m",
+    "step_dx_m",
+    "step_dy_m",
+    "step_dz_m",
+    "step_left_right_distance_m",
+    "step_front_back_distance_m",
+    "step_diagonal_distance_m",
+    "step_direction_type",
+    "mean_foot_speed_mps",
+    "peak_foot_speed_mps",
+    "mean_com_speed_mps",
+    "mean_foot_acceleration_mps2",
+    "peak_foot_acceleration_mps2",
+    "mean_com_acceleration_mps2",
+    "peak_com_acceleration_mps2",
+    "phase_label",
+    "unit_id",
+]
+
+LEGACY_UNIT_COLUMNS = [
+    "unit_id",
+    "target_cell",
+    "move_start_frame",
+    "move_end_frame",
+    "restore_start_frame",
+    "restore_end_frame",
+    "move_duration_s",
+    "restore_duration_s",
+    "unit_total_duration_s",
+    "move_dx_m",
+    "move_dy_m",
+    "move_dz_m",
+    "move_left_right_distance_m",
+    "move_front_back_distance_m",
+    "move_diagonal_distance_m",
+    "move_horizontal_distance_m",
+    "move_distance_m",
+    "move_direction_type",
+    "restore_dx_m",
+    "restore_dy_m",
+    "restore_dz_m",
+    "restore_left_right_distance_m",
+    "restore_front_back_distance_m",
+    "restore_diagonal_distance_m",
+    "restore_horizontal_distance_m",
+    "restore_distance_m",
+    "restore_direction_type",
+    "unit_dx_m",
+    "unit_dy_m",
+    "unit_dz_m",
+    "unit_left_right_distance_m",
+    "unit_front_back_distance_m",
+    "unit_horizontal_distance_m",
+    "unit_total_distance_m",
+    "com_path_length_m",
+    "com_horizontal_path_length_m",
+    "trajectory_efficiency",
+    "trajectory_efficiency_xy",
+    "move_step_count",
+    "restore_step_count",
+    "unit_step_count",
+    "move_step_frequency_hz",
+    "restore_step_frequency_hz",
+    "unit_step_frequency_hz",
+]
+
+
 def _safe_num_series(df: pd.DataFrame, col: str) -> pd.Series:
     if col not in df.columns:
         return pd.Series(dtype=float)
@@ -105,12 +184,14 @@ def _legacy_frame_metrics(frame_df: pd.DataFrame) -> pd.DataFrame:
 def _legacy_step_metrics(state_event_df: pd.DataFrame, speed_summary_df: pd.DataFrame) -> pd.DataFrame:
     if not speed_summary_df.empty:
         return speed_summary_df.copy()
+    if state_event_df.empty:
+        return pd.DataFrame(columns=LEGACY_STEP_COLUMNS)
     return state_event_df.copy()
 
 
 def _legacy_unit_metrics(state_event_df: pd.DataFrame) -> pd.DataFrame:
     if state_event_df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=LEGACY_UNIT_COLUMNS)
 
     unit_df = state_event_df.copy()
     rename_map = {

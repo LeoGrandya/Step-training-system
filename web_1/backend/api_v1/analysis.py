@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, request
+from pathlib import Path
+
+from flask import Blueprint, request, send_file
 
 from backend import repositories as repo
 from backend.api_utils import json_err, json_ok, list_response, parse_pagination
+from backend.models import KinematicsDataset, TrainingVideo
 
 
 def _int_query(name: str) -> int | None:
@@ -18,6 +21,24 @@ def _int_query(name: str) -> int | None:
         return None
 
 
+def _account_id() -> str | None:
+    return (request.headers.get("X-Account-Id") or "").strip() or None
+
+
+def _account_subject_ids() -> list[str] | None:
+    aid = _account_id()
+    if not aid:
+        return None
+    return repo._subject_ids_for_account(aid)  # 空列表→无数据
+
+
+def _check_ownership(subject_id: str) -> bool | None:
+    aid = _account_id()
+    if not aid:
+        return True
+    return repo.check_subject_ownership(subject_id, aid)
+
+
 def register(bp: Blueprint) -> None:
     @bp.get("/kinematics-datasets")
     def list_kinematics_datasets():
@@ -25,6 +46,7 @@ def register(bp: Blueprint) -> None:
         items, total = repo.list_kinematics_datasets_page(
             keyword=page.keyword,
             subject_id=(request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None,
+            subject_ids=_account_subject_ids(),
             job_id=(request.args.get("jobId") or request.args.get("job_id") or "").strip() or None,
             training_video_id=(
                 request.args.get("trainingVideoId") or request.args.get("training_video_id") or ""
@@ -40,6 +62,11 @@ def register(bp: Blueprint) -> None:
         item = repo.get_kinematics_dataset_payload(dataset_id)
         if item is None:
             return json_err("not_found", 404)
+        sid = item.get("subjectId")
+        if sid:
+            ok = _check_ownership(sid)
+            if ok is False:
+                return json_err("permission_denied", 403)
         return json_ok(item=item)
 
     @bp.get("/kinematics-datasets/<dataset_id>/metrics")
@@ -62,3 +89,27 @@ def register(bp: Blueprint) -> None:
             return json_err("not_found", 404)
         items, total = result
         return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+    @bp.get("/videos/<dataset_id>/<camera>")
+    def stream_video(dataset_id: str, camera: str):
+        """根据 kinematics_dataset 的 training_video 播放左/右机位视频（支持拖拽进度条）。"""
+        if camera not in ("left", "right"):
+            return json_err("invalid_camera", 400)
+
+        dataset = KinematicsDataset.query.filter(KinematicsDataset.id == dataset_id).first()
+        if dataset is None or not dataset.training_video_id:
+            return json_err("not_found", 404)
+
+        video = TrainingVideo.query.filter(TrainingVideo.id == dataset.training_video_id).first()
+        if video is None:
+            return json_err("not_found", 404)
+
+        file_path = video.left_video_path if camera == "left" else video.right_video_path
+        if not file_path:
+            return json_err("not_found", 404)
+
+        path = Path(file_path)
+        if not path.exists():
+            return json_err("video_file_missing", 404)
+
+        return send_file(str(path), mimetype="video/mp4", conditional=True)

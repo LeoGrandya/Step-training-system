@@ -6,6 +6,7 @@ import AnalysisView from '../views/AnalysisView.vue';
 import CreateSubjectView from '../views/CreateSubjectView.vue';
 import DataManagementView from '../views/DataManagementView.vue';
 import LegacyHtmlView from '../views/LegacyHtmlView.vue';
+import PingpongReportView from '../views/PingpongReportView.vue';
 import ReportHistoryView from '../views/ReportHistoryView.vue';
 import TrainingView from '../views/TrainingView.vue';
 import { scheduleGuideForRoute } from '../guides/guideScheduler.js';
@@ -23,7 +24,7 @@ const routes = [
   { path: '/account', component: AccountView, meta: { requiresAuth: true } },
   { path: '/create-subject', component: CreateSubjectView, meta: { requiresAuth: true } },
   { path: '/loading', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'loading.html', requiresAuth: true } },
-  { path: '/report/:jobId?', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'report.html', requiresAuth: true } },
+  { path: '/report/:jobId?', component: PingpongReportView, meta: { requiresAuth: true } },
   { path: '/settings', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'settings.html', requiresAuth: true } },
   { path: '/team', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'team.html' } },
   { path: '/auth', component: AuthView },

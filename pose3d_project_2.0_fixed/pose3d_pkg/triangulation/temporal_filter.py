@@ -256,3 +256,125 @@ def temporal_filter_pose3d_abs_csv(
     print(f"pose3d_abs_filtered.csv 已保存到: {output_pose3d_abs_csv_path}")
     print(f"pose3d_relative_filtered.csv 已保存到: {output_pose3d_relative_csv_path}")
     return str(output_pose3d_abs_csv_path), str(output_pose3d_relative_csv_path)
+
+
+def ground_align_pose3d_abs_csv(
+    input_pose3d_abs_csv_path: str,
+    output_pose3d_abs_csv_path: str,
+    output_pose3d_relative_csv_path: str,
+    relative_root_mode: str = "pelvis_midpoint",
+    root_joint_id: int | None = None,
+    root_joint_name: str | None = None,
+    ground_align_enabled: bool = True,
+    ground_align_joint_names=None,
+    ground_align_statistic: str = "mean",
+    ground_align_target_z: float = 0.0,
+    extra_abs_output_csv_path: str | None = None,
+):
+    """对绝对 3D 姿态数据做地面对齐（不做时间滤波），并生成相对姿态。"""
+    input_pose3d_abs_csv_path = Path(input_pose3d_abs_csv_path)
+    output_pose3d_abs_csv_path = Path(output_pose3d_abs_csv_path)
+    output_pose3d_relative_csv_path = Path(output_pose3d_relative_csv_path)
+
+    if not input_pose3d_abs_csv_path.exists():
+        raise FileNotFoundError(f"未找到输入文件: {input_pose3d_abs_csv_path}")
+
+    output_pose3d_abs_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    output_pose3d_relative_csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+    df_abs = pd.read_csv(input_pose3d_abs_csv_path)
+
+    df_abs_aligned, ground_shift = align_abs_dataframe_ground_z(
+        df_abs,
+        enabled=ground_align_enabled,
+        ground_align_joint_names=ground_align_joint_names,
+        statistic=ground_align_statistic,
+        target_z=ground_align_target_z,
+    )
+
+    df_rel = build_relative_pose3d_dataframe(
+        df_abs=df_abs_aligned,
+        root_mode=relative_root_mode,
+        root_joint_id=root_joint_id,
+        root_joint_name=root_joint_name,
+    )
+
+    df_abs_aligned.to_csv(output_pose3d_abs_csv_path, index=False, encoding="utf-8")
+    df_rel.to_csv(output_pose3d_relative_csv_path, index=False, encoding="utf-8")
+
+    if extra_abs_output_csv_path is not None and str(extra_abs_output_csv_path).strip() != "":
+        extra_abs_output_csv_path = Path(extra_abs_output_csv_path)
+        extra_abs_output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+        df_abs_aligned.to_csv(extra_abs_output_csv_path, index=False, encoding="utf-8")
+        print(f"pose3d_abs_ground_aligned 已额外保存到: {extra_abs_output_csv_path}")
+
+    if ground_align_enabled:
+        print(f"ground z alignment enabled, z shift = {ground_shift:.6f} m")
+    print(f"pose3d_abs_ground_aligned.csv 已保存到: {output_pose3d_abs_csv_path}")
+    print(f"pose3d_relative.csv 已保存到: {output_pose3d_relative_csv_path}")
+    return str(output_pose3d_abs_csv_path), str(output_pose3d_relative_csv_path)
+
+
+_WIDE_JOINT_ORDER = [
+    "body_com",
+    "left_hip", "right_hip",
+    "left_knee", "right_knee",
+    "left_ankle", "right_ankle",
+    "left_heel", "right_heel",
+    "left_foot_index", "right_foot_index",
+    "left_shoulder", "right_shoulder",
+]
+
+
+def _build_wide_columns():
+    cols = ["frame_id"]
+    for joint in _WIDE_JOINT_ORDER:
+        cols.extend([f"{joint}_x", f"{joint}_y", f"{joint}_z"])
+    return cols
+
+
+def export_pose3d_wide_csv(
+    input_pose3d_abs_csv_path: str,
+    output_wide_csv_path: str,
+):
+    """将 ground-aligned 长表 CSV 转换为宽表 CSV 并保存。"""
+    input_pose3d_abs_csv_path = Path(input_pose3d_abs_csv_path)
+    output_wide_csv_path = Path(output_wide_csv_path)
+
+    if not input_pose3d_abs_csv_path.exists():
+        raise FileNotFoundError(f"未找到输入文件: {input_pose3d_abs_csv_path}")
+
+    output_wide_csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+    df = pd.read_csv(input_pose3d_abs_csv_path)
+
+    required_cols = ["frame_id", "joint_name", "x", "y", "z"]
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"输入 CSV 缺少必要列: {col}")
+
+    df["x"] = pd.to_numeric(df["x"], errors="coerce")
+    df["y"] = pd.to_numeric(df["y"], errors="coerce")
+    df["z"] = pd.to_numeric(df["z"], errors="coerce")
+
+    frames = sorted(df["frame_id"].unique())
+    rows = []
+    for frame_id in frames:
+        frame_df = df[df["frame_id"] == frame_id]
+        row = {"frame_id": int(frame_id)}
+        for joint in _WIDE_JOINT_ORDER:
+            jd = frame_df[frame_df["joint_name"] == joint]
+            if len(jd) == 1:
+                row[f"{joint}_x"] = float(jd["x"].iloc[0]) if pd.notna(jd["x"].iloc[0]) else ""
+                row[f"{joint}_y"] = float(jd["y"].iloc[0]) if pd.notna(jd["y"].iloc[0]) else ""
+                row[f"{joint}_z"] = float(jd["z"].iloc[0]) if pd.notna(jd["z"].iloc[0]) else ""
+            else:
+                row[f"{joint}_x"] = ""
+                row[f"{joint}_y"] = ""
+                row[f"{joint}_z"] = ""
+        rows.append(row)
+
+    wide_df = pd.DataFrame(rows, columns=_build_wide_columns())
+    wide_df.to_csv(output_wide_csv_path, index=False, encoding="utf-8")
+    print(f"pose3d_wide.csv 已保存到: {output_wide_csv_path}")
+    return str(output_wide_csv_path)

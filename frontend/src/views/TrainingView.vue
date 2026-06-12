@@ -73,9 +73,9 @@ async function loadSubjectProfile() {
         age: u.age ?? 25,
         heightCm: u.heightCm ?? 170,
         weightKg: u.weightKg ?? 65,
-        hand: u.hand || 'right',
+        hand: u.hand || '右手',
         years: u.years ?? 0,
-        level: u.level || 'amateur',
+        level: u.level || '业余',
       };
       profile.value = p;
       saveProfile(p); // 同步到本地缓存
@@ -96,20 +96,23 @@ async function saveProfileToAPI(nextProfile) {
 }
 
 const modes = [
-  { value: 'eval', kicker: 'Eval', label: '练习评估', desc: '开放步伐配置，训练后保留视频分析入口。' },
-  { value: 'free', kicker: 'Free', label: '自由练习', desc: '用于热身和纯训练，默认隐藏分析入口。' },
-  { value: 'test', kicker: 'Test', label: '能力测试', desc: '按等级锁定标准步伐，并保留分析入口生成报告。' },
+  { value: '练习评估', kicker: 'Eval', label: '练习评估', desc: '开放步伐配置，训练后保留视频分析入口。' },
+  { value: '自由练习', kicker: 'Free', label: '自由练习', desc: '用于热身和纯训练，默认隐藏分析入口。' },
+  { value: '能力测试', kicker: 'Test', label: '能力测试', desc: '按等级锁定标准步伐，并保留分析入口生成报告。' },
 ];
 
 const modeMap = {
   eval: '练习评估',
   free: '自由练习',
   test: '能力测试',
+  '练习评估': '练习评估',
+  '自由练习': '自由练习',
+  '能力测试': '能力测试',
 };
 
-const handLabel = computed(() => (profile.value.hand === 'left' ? '左手持拍' : '右手持拍'));
+const handLabel = computed(() => (profile.value.hand === '左手' ? '左手持拍' : '右手持拍'));
 const levelLabel = computed(() => {
-  const map = { amateur: '业余', 'level-2': '二级', 'level-1': '一级' };
+  const map = { '业余': '业余', '二级': '二级', '一级': '一级' };
   return map[profile.value.level] || '业余';
 });
 const currentModeLabel = computed(() => modeMap[selectedMode.value] || '未选择模式');
@@ -117,7 +120,7 @@ const profileSummary = computed(() => {
   const name = profile.value.name || '训练用户';
   return `${name} · ${handLabel.value} · ${profile.value.years} 年训练 · ${levelLabel.value} · ${currentModeLabel.value}`;
 });
-const analysisVisible = computed(() => selectedMode.value !== 'free');
+const analysisVisible = computed(() => selectedMode.value !== '自由练习' && selectedMode.value !== 'free');
 
 function goAnalysis() {
   router.push('/analysis');

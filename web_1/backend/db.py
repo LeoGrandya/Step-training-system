@@ -81,3 +81,11 @@ def init_database(app) -> None:
         from . import models  # noqa: F811 — ensure all models are imported
         with app.app_context():
             db.create_all()
+
+    # One-time cleanup: soft-delete exact duplicate subjects (same name + same attributes under same account)
+    with app.app_context():
+        from . import repositories as _repo
+        deleted = _repo.cleanup_duplicate_subjects()
+        if deleted:
+            import logging
+            logging.getLogger("pose3d").info("Cleaned up %d exact-duplicate subject(s)", deleted)

@@ -32,11 +32,6 @@ RIGHT_SHOULDER_IDX = 12
 
 
 
-def _use_gpu_delegate() -> bool:
-    raw = os.environ.get("POSE2D_GPU", "1").strip().lower()
-    return raw not in ("0", "false", "no")
-
-
 def create_pose_landmarker(
     model_path: str,
     min_pose_detection_confidence: float = 0.5,
@@ -49,24 +44,16 @@ def create_pose_landmarker(
     PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
     VisionRunningMode = mp.tasks.vision.RunningMode
 
-    def _build_options(delegate):
-        return PoseLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=model_path, delegate=delegate),
-            running_mode=VisionRunningMode.VIDEO,
-            num_poses=num_poses,
-            min_pose_detection_confidence=min_pose_detection_confidence,
-            min_pose_presence_confidence=min_pose_presence_confidence,
-            min_tracking_confidence=min_tracking_confidence,
-            output_segmentation_masks=False,
-        )
-
-    if _use_gpu_delegate():
-        try:
-            return PoseLandmarker.create_from_options(_build_options(BaseOptions.Delegate.GPU))
-        except Exception as exc:
-            print(f"警告: MediaPipe GPU 初始化失败，回退 CPU: {exc}")
-
-    return PoseLandmarker.create_from_options(_build_options(BaseOptions.Delegate.CPU))
+    options = PoseLandmarkerOptions(
+        base_options=BaseOptions(model_asset_path=model_path),
+        running_mode=VisionRunningMode.VIDEO,
+        num_poses=num_poses,
+        min_pose_detection_confidence=min_pose_detection_confidence,
+        min_pose_presence_confidence=min_pose_presence_confidence,
+        min_tracking_confidence=min_tracking_confidence,
+        output_segmentation_masks=False,
+    )
+    return PoseLandmarker.create_from_options(options)
 
 
 
@@ -351,8 +338,9 @@ def extract_pose2d_from_stereo_videos(
     fps = get_video_fps(reader.left_info)
     if fps is None or fps <= 1e-6:
         fps = 30.0
-
     stride = max(1, int(frame_stride or 1))
+    if stride > 1:
+        print(f"pose2d 帧采样: stride={stride}, 源 FPS≈{fps:.1f}, 有效 FPS≈{fps / stride:.1f}")
     total_source_frames = int(reader.left_info.get("frame_count") or 0)
     if total_source_frames <= 0:
         total_source_frames = int(reader.right_info.get("frame_count") or 0)
@@ -361,8 +349,6 @@ def extract_pose2d_from_stereo_videos(
     )
     if max_frames is not None:
         expected_processed = min(expected_processed, int(max_frames))
-    if stride > 1:
-        print(f"pose2d 帧采样: stride={stride}, 源 FPS≈{fps:.1f}, 有效 FPS≈{fps / stride:.1f}")
 
     ensure_parent(output_csv_path)
 
@@ -413,7 +399,6 @@ def extract_pose2d_from_stereo_videos(
                 success, frame_id, left_frame, right_frame = reader.read()
                 if not success:
                     break
-
                 if frame_id % stride != 0:
                     continue
 

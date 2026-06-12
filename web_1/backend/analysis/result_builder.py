@@ -14,6 +14,10 @@ DEFAULT_CHART_BUNDLE_MAX_POINTS = 2000
 
 _TIMESERIES_ARRAY_KEYS = (
     "time_s",
+    "com_x",
+    "com_y",
+    "com_z",
+    "com_cell",
     "com_speed_mps",
     "com_acceleration_mps2",
     "turning_speed_deg_s",
@@ -23,6 +27,16 @@ _TIMESERIES_ARRAY_KEYS = (
     "right_knee_angle_deg",
     "left_ankle_angle_deg",
     "right_ankle_angle_deg",
+    "left_hip_angle_deg",
+    "right_hip_angle_deg",
+    "left_hip_torque_nm",
+    "right_hip_torque_nm",
+    "left_knee_torque_nm",
+    "right_knee_torque_nm",
+    "left_hip_power_w",
+    "right_hip_power_w",
+    "left_knee_power_w",
+    "right_knee_power_w",
 )
 
 try:
@@ -97,6 +111,12 @@ def _scalar(v: Any) -> float | int | None:
 def _series_list(df: pd.DataFrame, col: str) -> list[float]:
     s = _to_num(df, col).dropna()
     return [float(x) for x in s.tolist()]
+
+
+def _string_list(df: pd.DataFrame, col: str) -> list[str]:
+    if col not in df.columns:
+        return []
+    return [str(v) if pd.notna(v) else "" for v in df[col].tolist()]
 
 
 def _table_records(path: Path) -> list[dict[str, Any]]:
@@ -243,16 +263,16 @@ def _kpi_assessments(
         excellent, good = thresholds
         if invert:
             if v <= excellent:
-                return "excellent"
+                return "优秀"
             if v <= good:
-                return "good"
-            return "improve"
+                return "良好"
+            return "待提高"
         else:
             if v >= excellent:
-                return "excellent"
+                return "优秀"
             if v >= good:
-                return "good"
-            return "improve"
+                return "良好"
+            return "待提高"
     
     speed = _scalar(all_metrics.get("mean_com_speed_mps"))
     assessments["整体效率"] = assess(speed, (2.5, 2.0))
@@ -301,6 +321,10 @@ def _timeseries(frame_df: pd.DataFrame) -> dict[str, list[float]]:
         frame_df,
         [
             "time_s",
+            "com_x",
+            "com_y",
+            "com_z",
+            "com_cell",
             "com_speed_mps",
             "com_acceleration_mps2",
             "turning_speed_deg_s",
@@ -311,6 +335,16 @@ def _timeseries(frame_df: pd.DataFrame) -> dict[str, list[float]]:
             "right_knee_angle_deg",
             "left_ankle_angle_deg",
             "right_ankle_angle_deg",
+            "left_hip_angle_deg",
+            "right_hip_angle_deg",
+            "left_hip_torque_nm",
+            "right_hip_torque_nm",
+            "left_knee_torque_nm",
+            "right_knee_torque_nm",
+            "left_hip_power_w",
+            "right_hip_power_w",
+            "left_knee_power_w",
+            "right_knee_power_w",
         ],
     )
 
@@ -323,6 +357,10 @@ def _timeseries(frame_df: pd.DataFrame) -> dict[str, list[float]]:
 
     return {
         "time_s": as_list("time_s"),
+        "com_x": as_list("com_x"),
+        "com_y": as_list("com_y"),
+        "com_z": as_list("com_z"),
+        "com_cell": as_list("com_cell"),
         "com_speed_mps": as_list("com_speed_mps"),
         "com_acceleration_mps2": as_list("com_acceleration_mps2"),
         "turning_speed_deg_s": turning_vals,
@@ -332,6 +370,19 @@ def _timeseries(frame_df: pd.DataFrame) -> dict[str, list[float]]:
         "right_knee_angle_deg": as_list("right_knee_angle_deg"),
         "left_ankle_angle_deg": as_list("left_ankle_angle_deg"),
         "right_ankle_angle_deg": as_list("right_ankle_angle_deg"),
+        "left_hip_angle_deg": as_list("left_hip_angle_deg"),
+        "right_hip_angle_deg": as_list("right_hip_angle_deg"),
+        "left_hip_torque_nm": as_list("left_hip_torque_nm"),
+        "right_hip_torque_nm": as_list("right_hip_torque_nm"),
+        "left_knee_torque_nm": as_list("left_knee_torque_nm"),
+        "right_knee_torque_nm": as_list("right_knee_torque_nm"),
+        "left_hip_power_w": as_list("left_hip_power_w"),
+        "right_hip_power_w": as_list("right_hip_power_w"),
+        "left_knee_power_w": as_list("left_knee_power_w"),
+        "right_knee_power_w": as_list("right_knee_power_w"),
+        "left_support_state": _string_list(frame_df, "left_support_state"),
+        "right_support_state": _string_list(frame_df, "right_support_state"),
+        "support_mode": _string_list(frame_df, "support_mode"),
     }
 
 
@@ -487,8 +538,15 @@ def build_result_payload(*, job_id: str, kinematics_dir: Path) -> dict[str, Any]
     universal2_payload = {
         "overall": _table_records(kinematics_dir / "总体参数" / "01_总体参数表.xlsx"),
         "evaluation": _table_records(kinematics_dir / "评价参数" / "02_评价参数表.xlsx"),
+        "evaluationFrame": _table_records(kinematics_dir / "评价参数" / "01_逐帧评价参数表.xlsx"),
         "torqueSummary": _table_records(kinematics_dir / "评价参数" / "03_关节力矩汇总表.xlsx"),
         "symmetryDetail": _table_records(kinematics_dir / "评价参数" / "04_步伐对称性明细表.xlsx"),
+        "displacementFrame": _table_records(kinematics_dir / "位移参数" / "01_逐帧位移参数表.xlsx"),
+        "airborneFrame": _table_records(kinematics_dir / "腾空参数" / "01_逐帧腾空参数表.xlsx"),
+        "airborneEvents": _table_records(kinematics_dir / "腾空参数" / "02_腾空事件表.xlsx"),
+        "airborneSummary": _table_records(kinematics_dir / "腾空参数" / "03_腾空汇总表.xlsx"),
+        "jointFrame": _table_records(kinematics_dir / "关节参数" / "01_逐帧关节参数表.xlsx"),
+        "jointSummary": _table_records(kinematics_dir / "关节参数" / "02_状态关节汇总表.xlsx"),
         "stateEvents": _table_records(kinematics_dir / "速度参数" / "02_状态事件表.xlsx"),
         "speedSummary": _table_records(kinematics_dir / "速度参数" / "03_状态速度汇总表.xlsx"),
     }
@@ -510,6 +568,8 @@ def build_result_payload(*, job_id: str, kinematics_dir: Path) -> dict[str, Any]
         "qualityFlags": quality_flags,
         "kpiAssessments": _kpi_assessments(summary_metrics, derived_stats),
         "timeseries": timeseries_data,
+        "stepMetrics": _table_records(kinematics_dir / "step_metrics.csv") if step_csv.exists() else [],
+        "unitMetrics": _table_records(kinematics_dir / "unit_metrics.csv") if unit_csv.exists() else [],
         "downloads": {
             "frame_metrics_csv": f"/api/analysis/jobs/{job_id}/artifacts/frame_metrics.csv" if frame_csv.exists() else None,
             "session_summary_csv": f"/api/analysis/jobs/{job_id}/artifacts/session_summary.csv" if session_csv.exists() else None,

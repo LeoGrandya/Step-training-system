@@ -1,6 +1,6 @@
 <!-- 运行时必需。登录/注册页，对接 accounts 表。 -->
 <template>
-  <section class="auth-page">
+  <section class="auth-page" data-guide="auth-intro">
     <div class="auth-card auth-card--centered">
       <form class="auth-form" @submit.prevent="submit">
         <h2>{{ mode === 'login' ? '账号登录' : '账号注册' }}</h2>
@@ -37,7 +37,7 @@
 import { computed, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { registerAccount, loginAccount } from '../services/api.js';
-import { loginAccountSession } from '../stores/storage.js';
+import { loginAccountSession, savePose3dProfile } from '../stores/storage.js';
 import { refreshLoginState } from '../router/guard.js';
 
 const route = useRoute();
@@ -104,6 +104,7 @@ async function submit() {
     }
 
     loginAccountSession(item);
+    savePose3dProfile({ name: item?.username || item?.account || '' });
     refreshLoginState();
     router.push(String(route.query.redirect || '/training?selectMode=1'));
   } catch (error) {

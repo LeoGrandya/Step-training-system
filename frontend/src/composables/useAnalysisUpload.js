@@ -16,7 +16,7 @@ export function useAnalysisUpload() {
     formData.append('right_video', rightFile)
     formData.append('fps', String(params.fps || 60))
     formData.append('user_id', params.userId || getCurrentUserId())
-    formData.append('training_mode', params.trainingMode || getTrainingMode() || 'eval')
+    formData.append('training_mode', params.trainingMode || getTrainingMode() || '练习评估')
     formData.append('profile_json', new Blob(
       [JSON.stringify(params.profileJson || getProfile())],
       { type: 'application/json' }

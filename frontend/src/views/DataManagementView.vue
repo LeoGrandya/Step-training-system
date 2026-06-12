@@ -1,4 +1,4 @@
-<!-- MySQL v1 数据管理工作台：按 5 人分工管理核心业务资源。 -->
+<!-- MySQL v1 数据管理工作台：管理核心业务资源。 -->
 <template>
   <section class="page-stack data-management-page">
     <header class="data-management-header">
@@ -6,17 +6,13 @@
         <p class="eyebrow">MySQL v1</p>
         <h1>数据管理</h1>
       </div>
-      <label class="data-management-account">
-        <span>权限账号 ID</span>
-        <input v-model.trim="accountId" type="text" placeholder="acct_..." @change="saveAccountId" />
-      </label>
       <button type="button" class="secondary-button" @click="loadResources">刷新</button>
     </header>
 
     <div class="data-management-layout">
       <aside class="data-management-sidebar" aria-label="资源类型">
         <button
-          v-for="resource in resources"
+          v-for="resource in visibleResources"
           :key="resource.key"
           type="button"
           class="data-management-tab"
@@ -24,30 +20,29 @@
           @click="switchResource(resource.key)"
         >
           <span>{{ resource.title }}</span>
-          <small>{{ resource.owner }}</small>
         </button>
       </aside>
 
       <section class="data-management-panel">
         <div class="data-management-panel__head">
           <div>
-            <p class="eyebrow">{{ activeResource.owner }}</p>
             <h2>{{ activeResource.title }}</h2>
             <p>{{ activeResource.description }}</p>
           </div>
-          <div class="data-management-search">
-            <input v-model.trim="query.keyword" type="search" placeholder="关键字搜索" @keyup.enter="loadResources" />
-            <select v-model.number="query.limit" @change="resetAndLoad">
-              <option :value="10">10 条</option>
-              <option :value="20">20 条</option>
-              <option :value="50">50 条</option>
-            </select>
-            <button type="button" @click="resetAndLoad">查询</button>
-          </div>
         </div>
 
-        <div v-if="activeFilterFields.length" class="data-management-filters">
-          <label v-for="field in activeFilterFields" :key="field.key" class="data-management-field">
+        <div class="data-management-toolbar">
+          <input
+            v-model.trim="query.keyword"
+            type="search"
+            placeholder="搜索关键字..."
+            @keyup.enter="loadResources"
+          />
+          <label
+            v-for="field in activeFilterFields"
+            :key="field.key"
+            class="data-management-toolbar-field"
+          >
             <span>{{ field.label }}</span>
             <select v-if="field.type === 'select'" v-model="query.filters[field.key]" @change="resetAndLoad">
               <option value="">全部</option>
@@ -63,48 +58,32 @@
               @keyup.enter="resetAndLoad"
             />
           </label>
-          <button type="button" class="secondary-button" @click="clearFilters">清空筛选</button>
+          <select v-model.number="query.limit" @change="resetAndLoad">
+            <option :value="10">10 条</option>
+            <option :value="20">20 条</option>
+            <option :value="50">50 条</option>
+          </select>
+          <button type="button" @click="resetAndLoad">查询</button>
+          <button
+            v-if="activeFilterFields.length"
+            type="button"
+            class="link-button"
+            @click="clearFilters"
+          >
+            清空筛选
+          </button>
         </div>
 
-        <p v-if="errorText" class="data-management-error">{{ errorText }}</p>
-
-        <form
-          v-if="activeResource.fields.length && (activeResource.creatable !== false || activeResource.editable !== false)"
-          class="data-management-form"
-          @submit.prevent="saveResource"
+        <button
+          v-if="activeResource.fields.length && activeResource.creatable !== false"
+          type="button"
+          class="data-management-add-btn"
+          @click="openCreateModal"
         >
-          <label v-for="field in activeResource.fields" :key="field.key" class="data-management-field">
-            <span>{{ field.label }}</span>
-            <select v-if="field.type === 'select'" v-model="form[field.key]" :required="field.required">
-              <option value="">未选择</option>
-              <option v-for="option in fieldOptions(field)" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-            <textarea
-              v-else-if="field.type === 'textarea' || field.type === 'json'"
-              v-model="form[field.key]"
-              :placeholder="field.placeholder || ''"
-              rows="3"
-            />
-            <input
-              v-else
-              v-model="form[field.key]"
-              :type="field.type"
-              :min="field.min"
-              :max="field.max"
-              :required="field.required"
-              :placeholder="field.placeholder || ''"
-            />
-          </label>
-          <div class="data-management-form__actions">
-            <button type="submit" :disabled="saving || activeResource.creatable === false && !editingId">
-              {{ editingId ? '保存修改' : '新增记录' }}
-            </button>
-            <button type="button" class="secondary-button" @click="clearForm">清空</button>
-            <span v-if="editingId" class="data-management-editing">正在编辑：{{ editingId }}</span>
-          </div>
-        </form>
+          + 新增记录
+        </button>
+
+        <p v-if="errorText" class="data-management-error">{{ errorText }}</p>
 
         <div class="data-management-table-wrap">
           <table class="data-management-table">
@@ -157,6 +136,51 @@
         </footer>
       </section>
     </div>
+
+    <!-- 新增 / 编辑弹窗 -->
+    <Teleport to="body">
+      <div v-if="showModal" class="data-management-modal" @click.self="closeModal">
+        <div class="data-management-modal__card">
+          <div class="data-management-modal__head">
+            <h3>{{ editingId ? '编辑记录' : '新增记录' }}</h3>
+            <button type="button" class="link-button" @click="closeModal" aria-label="关闭">✕</button>
+          </div>
+
+          <p v-if="modalError" class="data-management-error">{{ modalError }}</p>
+
+          <form class="data-management-form" @submit.prevent="saveResource">
+            <label v-for="field in activeResource.fields" :key="field.key" class="data-management-field">
+              <span>{{ field.label }}</span>
+              <select v-if="field.type === 'select'" v-model="form[field.key]" :required="field.required">
+                <option value="">未选择</option>
+                <option v-for="option in fieldOptions(field)" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+              <textarea
+                v-else-if="field.type === 'textarea' || field.type === 'json'"
+                v-model="form[field.key]"
+                :placeholder="field.placeholder || ''"
+                rows="3"
+              />
+              <input
+                v-else
+                v-model="form[field.key]"
+                :type="field.type"
+                :min="field.min"
+                :max="field.max"
+                :required="field.required"
+                :placeholder="field.placeholder || ''"
+              />
+            </label>
+            <div class="data-management-form__actions">
+              <button type="submit" :disabled="saving">{{ editingId ? '保存修改' : '新增记录' }}</button>
+              <button type="button" class="secondary-button" @click="closeModal">取消</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -174,13 +198,16 @@ import {
 import { getCurrentAccountId, setCurrentAccountId } from '../stores/storage.js';
 
 const resources = RESOURCE_DEFINITIONS;
-const activeKey = ref(resources[0].key);
+const visibleResources = computed(() => resources.filter(r => !r.hidden));
+const activeKey = ref(visibleResources.value[0]?.key || resources[0].key);
 const items = ref([]);
 const total = ref(0);
 const loading = ref(false);
 const saving = ref(false);
 const errorText = ref('');
 const editingId = ref('');
+const showModal = ref(false);
+const modalError = ref('');
 const accountId = ref(getCurrentAccountId());
 const form = reactive({});
 const lookups = reactive({});
@@ -197,10 +224,21 @@ function defaultValueFor(field) {
 
 function clearForm() {
   editingId.value = '';
+  modalError.value = '';
   for (const key of Object.keys(form)) delete form[key];
   for (const field of activeResource.value.fields) {
     form[field.key] = defaultValueFor(field);
   }
+}
+
+function openCreateModal() {
+  clearForm();
+  showModal.value = true;
+}
+
+function closeModal() {
+  showModal.value = false;
+  clearForm();
 }
 
 function saveAccountId() {
@@ -309,21 +347,23 @@ function switchResource(key) {
   query.keyword = '';
   query.offset = 0;
   resetFilters();
-  clearForm();
+  closeModal();
   loadResources();
 }
 
 function editResource(item) {
   editingId.value = item.id || item.jobId || '';
+  modalError.value = '';
   for (const field of activeResource.value.fields) {
     const value = item[field.key];
     form[field.key] = field.type === 'json' && value ? JSON.stringify(value, null, 2) : value ?? '';
   }
+  showModal.value = true;
 }
 
 async function saveResource() {
   saving.value = true;
-  errorText.value = '';
+  modalError.value = '';
   try {
     const payload = buildPayload();
     if (editingId.value) {
@@ -331,11 +371,11 @@ async function saveResource() {
     } else {
       await createAdminRecord(activeResource.value, payload);
     }
-    clearForm();
+    closeModal();
     await loadLookups();
     await loadResources();
   } catch (error) {
-    errorText.value = error.message || '保存失败';
+    modalError.value = error.message || '保存失败';
   } finally {
     saving.value = false;
   }

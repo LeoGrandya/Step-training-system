@@ -6,6 +6,7 @@ from flask import Blueprint, request
 
 from backend import repositories as repo
 from backend.api_utils import json_err, json_ok, list_response, parse_pagination
+from backend.models import RouteDefinition
 
 
 def _json_payload():
@@ -13,6 +14,22 @@ def _json_payload():
     if not isinstance(payload, dict):
         return None
     return payload
+
+
+def _account_id() -> str | None:
+    return (request.headers.get("X-Account-Id") or "").strip() or None
+
+
+def _check_route_ownership(route_id: str, account_id: str) -> bool | None:
+    """None = not found, False = not yours, True = ok (including NULL owner for legacy)."""
+    row = RouteDefinition.query.filter(
+        RouteDefinition.id == route_id, RouteDefinition.is_active.is_(True)
+    ).first()
+    if row is None:
+        return None
+    if row.created_by_account_id and row.created_by_account_id != account_id:
+        return False
+    return True
 
 
 def _conflict_error(exc: RuntimeError):
@@ -28,6 +45,7 @@ def register(bp: Blueprint) -> None:
         items, total = repo.list_routes_page(
             keyword=page.keyword,
             footwork_type_id=footwork_type_id or None,
+            account_id=_account_id(),
             limit=page.limit,
             offset=page.offset,
         )
@@ -38,6 +56,9 @@ def register(bp: Blueprint) -> None:
         payload = _json_payload()
         if payload is None:
             return json_err("invalid_json", 400)
+        aid = _account_id()
+        if aid:
+            payload["createdByAccountId"] = aid
         try:
             item = repo.create_route_record(payload)
         except ValueError as exc:
@@ -60,6 +81,13 @@ def register(bp: Blueprint) -> None:
         payload = _json_payload()
         if payload is None:
             return json_err("invalid_json", 400)
+        aid = _account_id()
+        if aid:
+            ok = _check_route_ownership(route_id, aid)
+            if ok is None:
+                return json_err("not_found", 404)
+            if not ok:
+                return json_err("permission_denied", 403)
         try:
             item = repo.update_route_record(route_id, payload)
         except ValueError as exc:
@@ -74,6 +102,13 @@ def register(bp: Blueprint) -> None:
 
     @bp.delete("/routes/<route_id>")
     def delete_route(route_id: str):
+        aid = _account_id()
+        if aid:
+            ok = _check_route_ownership(route_id, aid)
+            if ok is None:
+                return json_err("not_found", 404)
+            if not ok:
+                return json_err("permission_denied", 403)
         if not repo.soft_delete_route_record(route_id):
             return json_err("not_found", 404)
         return json_ok()

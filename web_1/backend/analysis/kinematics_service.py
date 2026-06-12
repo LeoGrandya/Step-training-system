@@ -1,4 +1,4 @@
-"""Run footwork_kinematics_universal2 pipeline on pose3d CSV."""
+"""Run the bundled footwork kinematics pipeline on pose3d CSV outputs."""
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ def repo_root() -> Path:
 
 
 def footwork_root() -> Path:
+    # The stable in-repo path is kept for web imports; its contents are migrated to Universal3.
     return repo_root() / "footwork_kinematics_universal2"
 
 
@@ -78,6 +79,23 @@ def _segmentation_input_snapshot(frame_df) -> dict:
             "sample": [None if pd.isna(v) else str(v) for v in s.head(5).tolist()],
         }
     return out
+
+
+def _unpack_segmentation_result(result):
+    """Normalize Universal2 segmentation return values across versions."""
+    if not isinstance(result, tuple):
+        raise TypeError("segment_cycles_by_rules must return a tuple")
+    if len(result) == 3:
+        return result
+    if len(result) == 2:
+        frame_df, cycles = result
+        cycle_count = len(cycles) if hasattr(cycles, "__len__") else 0
+        return frame_df, cycles, {
+            "segmentation_status": "ok",
+            "segmentation_source": "legacy_two_value_return",
+            "cycle_count": cycle_count,
+        }
+    raise ValueError(f"Unexpected segment_cycles_by_rules return length: {len(result)}")
 
 
 def run_kinematics(
@@ -181,7 +199,9 @@ def run_kinematics(
     frame_df = build_frame_metrics(pose_df, params)
     log_fn("分段输入摘要: " + json.dumps(_segmentation_input_snapshot(frame_df), ensure_ascii=False))
     try:
-        frame_df, cycles, segmentation_diagnostics = segment_cycles_by_rules(frame_df, params)
+        frame_df, cycles, segmentation_diagnostics = _unpack_segmentation_result(
+            segment_cycles_by_rules(frame_df, params)
+        )
     except Exception:
         log_fn("分段失败输入摘要: " + json.dumps(_segmentation_input_snapshot(frame_df), ensure_ascii=False))
         raise

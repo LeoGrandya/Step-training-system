@@ -137,10 +137,10 @@ def _canonical_sequence(value: Any) -> str:
 
 def _require_active_subject(subject_id: str | None) -> str:
     if not subject_id:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     row = Subject.query.filter(Subject.id == subject_id, Subject.is_active.is_(True)).first()
     if row is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return subject_id
 
 
@@ -149,7 +149,7 @@ def _require_active_footwork_type(footwork_type_id: str | None) -> str | None:
         return None
     row = FootworkType.query.filter(FootworkType.id == footwork_type_id, FootworkType.is_active.is_(True)).first()
     if row is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return footwork_type_id
 
 
@@ -161,7 +161,7 @@ def _require_active_route(route_definition_id: str | None) -> str | None:
         RouteDefinition.is_active.is_(True),
     ).first()
     if row is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return route_definition_id
 
 
@@ -169,7 +169,7 @@ def _require_training_config(training_config_id: str | None) -> str | None:
     if not training_config_id:
         return None
     if TrainingConfig.query.filter(TrainingConfig.id == training_config_id).first() is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return training_config_id
 
 
@@ -178,7 +178,7 @@ def _get_training_config_row(training_config_id: str | None) -> TrainingConfig |
         return None
     row = TrainingConfig.query.filter(TrainingConfig.id == training_config_id).first()
     if row is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return row
 
 
@@ -186,7 +186,7 @@ def _require_training_video(training_video_id: str | None) -> str | None:
     if not training_video_id:
         return None
     if TrainingVideo.query.filter(TrainingVideo.id == training_video_id).first() is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return training_video_id
 
 
@@ -194,7 +194,7 @@ def _require_analysis_job(job_id: str | None) -> str | None:
     if not job_id:
         return None
     if AnalysisJob.query.filter(AnalysisJob.job_id == job_id).first() is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return job_id
 
 
@@ -203,7 +203,7 @@ def _get_analysis_job_row(job_id: str | None) -> AnalysisJob | None:
         return None
     row = AnalysisJob.query.filter(AnalysisJob.job_id == job_id).first()
     if row is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return row
 
 
@@ -211,7 +211,7 @@ def _require_kinematics_dataset(dataset_id: str | None) -> str | None:
     if not dataset_id:
         return None
     if KinematicsDataset.query.filter(KinematicsDataset.id == dataset_id).first() is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return dataset_id
 
 
@@ -220,7 +220,7 @@ def _get_kinematics_dataset_row(dataset_id: str | None) -> KinematicsDataset | N
         return None
     row = KinematicsDataset.query.filter(KinematicsDataset.id == dataset_id).first()
     if row is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     return row
 
 
@@ -254,6 +254,38 @@ def serialize_subject(subject: Subject) -> dict[str, Any]:
     }
 
 
+def _distinguish_suffix(subject_dict: dict[str, Any]) -> str:
+    """Return distinguishing suffix for duplicate names: age > height > weight. Empty if none."""
+    if subject_dict.get("age") is not None:
+        return f"{subject_dict['age']}岁"
+    if subject_dict.get("heightCm") is not None:
+        return f"{subject_dict['heightCm']}cm"
+    if subject_dict.get("weightKg") is not None:
+        return f"{subject_dict['weightKg']}kg"
+    return ""
+
+
+def _compute_display_names(subjects: list[dict[str, Any]]) -> None:
+    """Mutate subjects in-place: add displayName. Later duplicates get distinguishing suffix."""
+    groups: dict[tuple[str | None, str], list[dict[str, Any]]] = {}
+    for s in subjects:
+        key = (s.get("createdByAccountId"), s["name"])
+        groups.setdefault(key, []).append(s)
+
+    for group in groups.values():
+        if len(group) <= 1:
+            for s in group:
+                s["displayName"] = s["name"]
+            continue
+        group.sort(key=lambda s: s.get("createdAt", ""))
+        for i, s in enumerate(group):
+            if i == 0:
+                s["displayName"] = s["name"]
+            else:
+                suffix = _distinguish_suffix(s)
+                s["displayName"] = f"{s['name']}·{suffix}" if suffix else s["name"]
+
+
 def list_subjects() -> list[dict[str, Any]]:
     items, _ = list_subjects_page(limit=None, offset=0)
     return items
@@ -264,6 +296,8 @@ def list_subjects_page(
     keyword: str | None = None,
     is_active: bool | None = None,
     account_id: str | None = None,
+    hand: str | None = None,
+    level: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -271,11 +305,16 @@ def list_subjects_page(
     query = active_filter(query, Subject, is_active=is_active)
     if account_id:
         query = query.filter(Subject.created_by_account_id == account_id)
+    if hand:
+        query = query.filter(Subject.hand == hand)
+    if level:
+        query = query.filter(Subject.level == level)
     query = keyword_filter(query, Subject, Subject.name, keyword)
     query = query.order_by(Subject.name.asc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
-    return [serialize_subject(row) for row in rows], total
-
+    items = [serialize_subject(row) for row in rows]
+    _compute_display_names(items)
+    return items, total
 
 def serialize_footwork_type(row: FootworkType) -> dict[str, Any]:
     return {
@@ -296,11 +335,14 @@ def list_footwork_types_page(
     *,
     keyword: str | None = None,
     is_active: bool | None = None,
+    category: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     query = FootworkType.query
     query = active_filter(query, FootworkType, is_active=is_active)
+    if category:
+        query = query.filter(FootworkType.category == category)
     if keyword:
         pattern = f"%{keyword.strip()}%"
         query = query.filter(or_(FootworkType.name.like(pattern), FootworkType.code.like(pattern)))
@@ -322,9 +364,9 @@ def _footwork_type_values_from_payload(
     code = str(payload.get("code", existing.code if existing else "") or "").strip().lower()
     name = _clean_text(payload.get("name", existing.name if existing else ""))
     if not code:
-        raise ValueError("code_required")
+        raise ValueError("请填写编码")
     if not name:
-        raise ValueError("name_required")
+        raise ValueError("请填写名称")
     return {
         "code": code,
         "name": name,
@@ -345,7 +387,7 @@ def _ensure_footwork_type_code_available(*, item_id: str | None, code: str) -> N
     if item_id:
         query = query.filter(FootworkType.id != item_id)
     if query.first() is not None:
-        raise DuplicateRecordError("duplicate_code")
+        raise DuplicateRecordError("编码已存在")
 
 
 def create_footwork_type_record(payload: dict[str, Any]) -> dict[str, Any]:
@@ -357,7 +399,7 @@ def create_footwork_type_record(payload: dict[str, Any]) -> dict[str, Any]:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_code") from exc
+        raise DuplicateRecordError("编码已存在") from exc
     return serialize_footwork_type(row)
 
 
@@ -374,7 +416,7 @@ def update_footwork_type_record(item_id: str, payload: dict[str, Any]) -> dict[s
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_code") from exc
+        raise DuplicateRecordError("编码已存在") from exc
     return serialize_footwork_type(row)
 
 
@@ -390,16 +432,31 @@ def soft_delete_footwork_type(item_id: str) -> bool:
 def create_subject(payload: dict[str, Any], *, normalize_name) -> dict[str, Any]:
     name = normalize_name(payload.get("name"))
     if not name:
-        raise ValueError("name_required")
+        raise ValueError("请填写名称")
     try:
         age = int(payload.get("age")) if payload.get("age") else None
         height_cm = int(payload.get("heightCm")) if payload.get("heightCm") else None
         weight_kg = float(payload.get("weightKg")) if payload.get("weightKg") else None
         years = int(payload.get("years")) if payload.get("years") else 0
     except (TypeError, ValueError) as exc:
-        raise ValueError("invalid_data") from exc
+        raise ValueError("数据格式无效") from exc
 
     created_by = payload.get("createdByAccountId") or None
+
+    # 检测同账号下完全重复的受试者（同名且年龄/身高/体重完全相同）
+    existing = Subject.query.filter(
+        Subject.name == name,
+        Subject.is_active.is_(True),
+        Subject.created_by_account_id == created_by,
+    ).first()
+    if existing is not None:
+        attrs_match = (
+            existing.age == age
+            and existing.height_cm == height_cm
+            and existing.weight_kg == weight_kg
+        )
+        if attrs_match:
+            raise ValueError("该账号下已存在同名且档案信息完全相同的受试者，请补充年龄等信息以区分")
 
     subject = Subject(
         id=_new_id("usr"),
@@ -407,19 +464,78 @@ def create_subject(payload: dict[str, Any], *, normalize_name) -> dict[str, Any]
         age=age,
         height_cm=height_cm,
         weight_kg=weight_kg,
-        hand=str(payload.get("hand", "right")).lower(),
+        hand=str(payload.get("hand", "右手")).lower(),
         years=years,
-        level=str(payload.get("level", "amateur")),
+        level=str(payload.get("level", "业余")),
         created_by_account_id=created_by,
     )
     db.session.add(subject)
     db.session.commit()
-    return serialize_subject(subject)
+    result = serialize_subject(subject)
+    # 若存在更早创建的同名受试者，为后来者追加 displayName
+    earlier = Subject.query.filter(
+        Subject.name == name,
+        Subject.id != subject.id,
+        Subject.is_active.is_(True),
+        Subject.created_by_account_id == created_by,
+        Subject.created_at < subject.created_at,
+    ).first()
+    if earlier is not None:
+        suffix = _distinguish_suffix(result)
+        result["displayName"] = f"{result['name']}·{suffix}" if suffix else result["name"]
+    else:
+        result["displayName"] = result["name"]
+    return result
 
 
 def get_subject_payload(subject_id: str) -> dict[str, Any] | None:
     subject = Subject.query.filter(Subject.id == subject_id, Subject.is_active.is_(True)).first()
-    return serialize_subject(subject) if subject else None
+    if subject is None:
+        return None
+    result = serialize_subject(subject)
+    # 检测重名：若存在更早创建的同名受试者，则为后来者追加 displayName 后缀
+    earlier = Subject.query.filter(
+        Subject.name == subject.name,
+        Subject.id != subject.id,
+        Subject.is_active.is_(True),
+        Subject.created_by_account_id == subject.created_by_account_id,
+        Subject.created_at < subject.created_at,
+    ).first()
+    if earlier is not None:
+        suffix = _distinguish_suffix(result)
+        result["displayName"] = f"{result['name']}·{suffix}" if suffix else result["name"]
+    else:
+        result["displayName"] = result["name"]
+    return result
+
+
+def cleanup_duplicate_subjects() -> int:
+    """Soft-delete later subjects that are exact attribute duplicates (same name, account, age/height/weight).
+    Returns the count of deleted subjects."""
+    all_subjects = Subject.query.filter(Subject.is_active.is_(True)).all()
+    groups: dict[tuple[str | None, str], list[Subject]] = {}
+    for s in all_subjects:
+        key = (s.created_by_account_id, s.name)
+        groups.setdefault(key, []).append(s)
+
+    deleted = 0
+    for group in groups.values():
+        if len(group) <= 1:
+            continue
+        group.sort(key=lambda s: s.created_at)
+        first = group[0]
+        for later in group[1:]:
+            if (
+                later.age == first.age
+                and later.height_cm == first.height_cm
+                and later.weight_kg == first.weight_kg
+            ):
+                apply_soft_delete(later)
+                deleted += 1
+
+    if deleted:
+        db.session.commit()
+    return deleted
 
 
 def update_subject(subject_id: str, payload: dict[str, Any], *, normalize_name) -> bool:
@@ -428,7 +544,7 @@ def update_subject(subject_id: str, payload: dict[str, Any], *, normalize_name) 
         return False
     name = normalize_name(payload.get("name", subject.name))
     if not name:
-        raise ValueError("name_required")
+        raise ValueError("请填写名称")
     try:
         if "age" in payload:
             subject.age = int(payload.get("age")) if payload.get("age") else None
@@ -439,7 +555,7 @@ def update_subject(subject_id: str, payload: dict[str, Any], *, normalize_name) 
         if "years" in payload:
             subject.years = int(payload.get("years")) if payload.get("years") else 0
     except (TypeError, ValueError) as exc:
-        raise ValueError("invalid_data") from exc
+        raise ValueError("数据格式无效") from exc
     subject.name = name
     if "hand" in payload:
         subject.hand = str(payload.get("hand")).lower()
@@ -454,9 +570,43 @@ def soft_delete_subject(subject_id: str) -> bool:
     subject = Subject.query.filter(Subject.id == subject_id, Subject.is_active.is_(True)).first()
     if subject is None:
         return False
+    # 级联清理运动学数据（物理删除 datasets + 逐帧指标）
+    datasets = KinematicsDataset.query.filter(KinematicsDataset.subject_id == subject_id).all()
+    for ds in datasets:
+        KinematicsFrameMetric.query.filter(KinematicsFrameMetric.dataset_id == ds.id).delete()
+        db.session.delete(ds)
+    # 清理关联的评估记录
+    EvaluationRecord.query.filter(EvaluationRecord.subject_id == subject_id).delete()
     apply_soft_delete(subject)
     db.session.commit()
     return True
+
+
+def check_subject_ownership(subject_id: str, account_id: str) -> bool | None:
+    """Return True if owned by account, False if owned by someone else, None if not found."""
+    subject = Subject.query.filter(Subject.id == subject_id, Subject.is_active.is_(True)).first()
+    if subject is None:
+        return None
+    if subject.created_by_account_id and subject.created_by_account_id != account_id:
+        return False
+    return True
+
+
+def _subject_ids_for_account(account_id: str) -> list[str]:
+    """Return all active subject IDs belonging to an account."""
+    rows = db.session.query(Subject.id).filter(
+        Subject.created_by_account_id == account_id,
+        Subject.is_active.is_(True),
+    ).all()
+    return [r[0] for r in rows]
+
+
+def check_report_ownership(report_id: str, account_id: str) -> bool | None:
+    """Return True if report's subject is owned by account, False otherwise, None if report not found."""
+    report = Report.query.filter(Report.id == report_id).first()
+    if report is None:
+        return None
+    return check_subject_ownership(report.subject_id, account_id)
 
 
 def serialize_custom_footwork(route: RouteDefinition) -> dict[str, Any]:
@@ -512,7 +662,7 @@ def create_custom_footwork_record(
         ).first()
         is not None
     ):
-        raise DuplicateRecordError("duplicate_name_and_sequence")
+        raise DuplicateRecordError("名称与序列组合已存在")
     route = RouteDefinition(
         id=_new_id("cf"),
         name=name,
@@ -531,7 +681,7 @@ def create_custom_footwork_record(
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_name_and_sequence") from exc
+        raise DuplicateRecordError("名称与序列组合已存在") from exc
     return serialize_custom_footwork(route)
 
 
@@ -559,7 +709,7 @@ def update_custom_footwork_record(
         RouteDefinition.is_active.is_(True),
     ).first()
     if duplicate is not None:
-        raise DuplicateRecordError("duplicate_name_and_sequence")
+        raise DuplicateRecordError("名称与序列组合已存在")
     route.name = name
     route.name_norm = name
     route.sequence = sequence
@@ -573,7 +723,7 @@ def update_custom_footwork_record(
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_name_and_sequence") from exc
+        raise DuplicateRecordError("名称与序列组合已存在") from exc
     return serialize_custom_footwork(route)
 
 
@@ -592,6 +742,7 @@ def soft_delete_custom_footwork(item_id: str) -> bool:
 
 
 def serialize_route(route: RouteDefinition) -> dict[str, Any]:
+    rhythm = _json(route.rhythm_json)
     return {
         "id": route.id,
         "footworkTypeId": route.footwork_type_id,
@@ -599,7 +750,8 @@ def serialize_route(route: RouteDefinition) -> dict[str, Any]:
         "sequence": route.sequence,
         "sequenceCanon": route.sequence_canon,
         "startCell": route.start_cell,
-        "rhythm": _json(route.rhythm_json),
+        "rhythm": rhythm,
+        "defaultMs": rhythm.get("defaultMs") if isinstance(rhythm, dict) else None,
         "actionRequirements": route.action_requirements,
         "isCustom": route.is_custom,
         "isActive": route.is_active,
@@ -613,10 +765,16 @@ def list_routes_page(
     *,
     keyword: str | None = None,
     footwork_type_id: str | None = None,
+    account_id: str | None = None,
     limit: int | None = None,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     query = RouteDefinition.query.filter(RouteDefinition.is_active.is_(True))
+    if account_id:
+        query = query.filter(
+            (RouteDefinition.created_by_account_id == account_id)
+            | (RouteDefinition.created_by_account_id.is_(None))
+        )
     if footwork_type_id:
         query = query.filter(RouteDefinition.footwork_type_id == footwork_type_id)
     if keyword:
@@ -647,15 +805,22 @@ def _route_values_from_payload(payload: dict[str, Any], *, existing: RouteDefini
     start_cell = _int_or_none(payload.get("startCell", start_default), field="start_cell", minimum=1, maximum=9)
 
     if not name:
-        raise ValueError("name_required")
+        raise ValueError("请填写名称")
     if not sequence_canon:
-        raise ValueError("sequence_required")
+        raise ValueError("请填写序列")
     if start_cell is None:
-        raise ValueError("invalid_start_cell")
+        raise ValueError("起始宫格无效（1-9）")
 
     footwork_type_id = payload.get("footworkTypeId", existing.footwork_type_id if existing else None)
     footwork_type_id = _require_active_footwork_type(_none_if_blank(footwork_type_id))
-    rhythm = payload.get("rhythm", existing.rhythm_json if existing else None)
+    # rhythm: 前端发 defaultMs 数字 → 后端存 rhytm_json = {"defaultMs": value}
+    default_ms = payload.get("defaultMs")
+    if default_ms is not None:
+        rhythm_json = {"defaultMs": int(default_ms)}
+    elif existing and existing.rhythm_json:
+        rhythm_json = existing.rhythm_json
+    else:
+        rhythm_json = None
     action_requirements = payload.get(
         "actionRequirements",
         existing.action_requirements if existing else None,
@@ -667,8 +832,12 @@ def _route_values_from_payload(payload: dict[str, Any], *, existing: RouteDefini
         "sequence_canon": sequence_canon,
         "start_cell": start_cell,
         "footwork_type_id": footwork_type_id,
-        "rhythm_json": rhythm,
+        "rhythm_json": rhythm_json,
         "action_requirements": _none_if_blank(action_requirements),
+        "created_by_account_id": (
+            payload.get("createdByAccountId")
+            or (existing.created_by_account_id if existing else None)
+        ),
     }
 
 
@@ -681,7 +850,7 @@ def _ensure_route_identity_available(*, route_id: str | None, name: str, sequenc
     if route_id:
         query = query.filter(RouteDefinition.id != route_id)
     if query.first() is not None:
-        raise DuplicateRecordError("duplicate_name_and_sequence")
+        raise DuplicateRecordError("名称与序列组合已存在")
     return active_hash
 
 
@@ -703,6 +872,7 @@ def create_route_record(payload: dict[str, Any]) -> dict[str, Any]:
         start_cell=values["start_cell"],
         rhythm_json=values["rhythm_json"],
         action_requirements=values["action_requirements"],
+        created_by_account_id=values.get("created_by_account_id"),
         is_custom=True,
         is_active=True,
     )
@@ -711,7 +881,7 @@ def create_route_record(payload: dict[str, Any]) -> dict[str, Any]:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_name_and_sequence") from exc
+        raise DuplicateRecordError("名称与序列组合已存在") from exc
     return serialize_route(route)
 
 
@@ -739,7 +909,7 @@ def update_route_record(route_id: str, payload: dict[str, Any]) -> dict[str, Any
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_name_and_sequence") from exc
+        raise DuplicateRecordError("名称与序列组合已存在") from exc
     return serialize_route(route)
 
 
@@ -787,9 +957,9 @@ def _route_step_values_from_payload(payload: dict[str, Any], *, existing: RouteS
     )
     cell = _int_or_none(payload.get("cell", existing.cell if existing else None), field="cell", minimum=1, maximum=9)
     if step_order is None:
-        raise ValueError("invalid_step_order")
+        raise ValueError("步骤顺序无效")
     if cell is None:
-        raise ValueError("invalid_cell")
+        raise ValueError("宫格编号无效（1-9）")
     dwell_ms = _int_or_none(payload.get("dwellMs", existing.dwell_ms if existing else None), field="dwell_ms", minimum=0)
     rhythm_ms = _int_or_none(
         payload.get("rhythmMs", existing.rhythm_ms if existing else None),
@@ -816,7 +986,7 @@ def create_route_step_record(route_id: str, payload: dict[str, Any]) -> dict[str
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_step_order") from exc
+        raise DuplicateRecordError("步骤顺序重复") from exc
     return serialize_route_step(step)
 
 
@@ -837,7 +1007,7 @@ def update_route_step_record(route_id: str, step_id: str, payload: dict[str, Any
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_step_order") from exc
+        raise DuplicateRecordError("步骤顺序重复") from exc
     return serialize_route_step(step)
 
 
@@ -861,7 +1031,7 @@ def ensure_analysis_job_stub(job_id: str, *, subject_id: str | None = None) -> A
             status="done",
             progress=1.0,
             message="external report",
-            analysis_profile="fast",
+            analysis_profile="快速",
         )
         db.session.add(job)
         db.session.flush()
@@ -895,11 +1065,50 @@ def create_training_video_record(
         right_size_bytes=right_path.stat().st_size if right_path.exists() else None,
         stereo_params_path=stereo_params_path,
         probe_json=probe,
-        status="uploaded",
+        status="已上传",
     )
     db.session.add(video)
     db.session.commit()
     return video.id
+
+
+def _training_video_values_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    subject_id = _require_active_subject(_none_if_blank(payload.get("subjectId")))
+    training_config_id = _require_training_config(_none_if_blank(payload.get("trainingConfigId")))
+    _validate_training_video_config_match(subject_id, training_config_id)
+
+    left_video_path = _none_if_blank(payload.get("leftVideoPath"))
+    right_video_path = _none_if_blank(payload.get("rightVideoPath"))
+    if not left_video_path:
+        raise ValueError("left_video_path_required")
+    if not right_video_path:
+        raise ValueError("right_video_path_required")
+
+    return {
+        "subject_id": subject_id,
+        "training_config_id": training_config_id,
+        "left_video_path": left_video_path,
+        "right_video_path": right_video_path,
+        "left_original_name": _none_if_blank(payload.get("leftOriginalName")),
+        "right_original_name": _none_if_blank(payload.get("rightOriginalName")),
+        "left_size_bytes": _int_or_none(payload.get("leftSizeBytes"), field="left_size_bytes", minimum=0),
+        "right_size_bytes": _int_or_none(payload.get("rightSizeBytes"), field="right_size_bytes", minimum=0),
+        "stereo_params_path": _none_if_blank(payload.get("stereoParamsPath")),
+        "probe_json": payload.get("probe", payload.get("probeJson")),
+        "status": _none_if_blank(payload.get("status")) or "uploaded",
+    }
+
+
+def create_training_video_metadata_record(payload: dict[str, Any]) -> dict[str, Any]:
+    values = _training_video_values_from_payload(payload)
+    video = TrainingVideo(id=_new_id("vid"), **values)
+    db.session.add(video)
+    try:
+        db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        raise InvalidReferenceError("关联数据不存在") from exc
+    return serialize_training_video(video)
 
 
 def serialize_training_config(config: TrainingConfig) -> dict[str, Any]:
@@ -926,6 +1135,7 @@ def list_training_configs_page(
     *,
     keyword: str | None = None,
     subject_id: str | None = None,
+    subject_ids: list[str] | None = None,
     footwork_type_id: str | None = None,
     route_definition_id: str | None = None,
     mode: str | None = None,
@@ -935,6 +1145,8 @@ def list_training_configs_page(
     query = TrainingConfig.query
     if subject_id:
         query = query.filter(TrainingConfig.subject_id == subject_id)
+    if subject_ids is not None:
+        query = query.filter(TrainingConfig.subject_id.in_(subject_ids))
     if footwork_type_id:
         query = query.filter(TrainingConfig.footwork_type_id == footwork_type_id)
     if route_definition_id:
@@ -968,9 +1180,9 @@ def _validate_route_footwork_match(route_definition_id: str | None, footwork_typ
         RouteDefinition.is_active.is_(True),
     ).first()
     if route is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     if route.footwork_type_id != footwork_type_id:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
 
 
 def _training_config_values_from_payload(
@@ -989,9 +1201,9 @@ def _training_config_values_from_payload(
         "subject_id": subject_id,
         "footwork_type_id": footwork_type_id,
         "route_definition_id": route_definition_id,
-        "mode": _none_if_blank(payload.get("mode", existing.mode if existing else "eval")) or "eval",
+        "mode": _none_if_blank(payload.get("mode", existing.mode if existing else "练习评估")) or "练习评估",
         "analysis_profile": (
-            _none_if_blank(payload.get("analysisProfile", existing.analysis_profile if existing else "fast")) or "fast"
+            _none_if_blank(payload.get("analysisProfile", existing.analysis_profile if existing else "快速")) or "快速"
         ),
         "light_duration_ms": _int_or_none(
             payload.get("lightDurationMs", existing.light_duration_ms if existing else None),
@@ -1032,7 +1244,7 @@ def create_training_config_record(payload: dict[str, Any]) -> dict[str, Any]:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise InvalidReferenceError("invalid_reference") from exc
+        raise InvalidReferenceError("关联数据不存在") from exc
     return serialize_training_config(config)
 
 
@@ -1048,7 +1260,7 @@ def update_training_config_record(config_id: str, payload: dict[str, Any]) -> di
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise InvalidReferenceError("invalid_reference") from exc
+        raise InvalidReferenceError("关联数据不存在") from exc
     return serialize_training_config(config)
 
 
@@ -1060,7 +1272,7 @@ def delete_training_config_record(config_id: str) -> bool:
         TrainingVideo.query.filter(TrainingVideo.training_config_id == config_id).first() is not None
         or AnalysisJob.query.filter(AnalysisJob.training_config_id == config_id).first() is not None
     ):
-        raise ReferenceConflictError("in_use")
+        raise ReferenceConflictError("被其他记录引用，无法删除")
     db.session.delete(config)
     db.session.commit()
     return True
@@ -1088,6 +1300,7 @@ def list_training_videos_page(
     *,
     keyword: str | None = None,
     subject_id: str | None = None,
+    subject_ids: list[str] | None = None,
     training_config_id: str | None = None,
     status: str | None = None,
     limit: int | None = None,
@@ -1096,6 +1309,8 @@ def list_training_videos_page(
     query = TrainingVideo.query
     if subject_id:
         query = query.filter(TrainingVideo.subject_id == subject_id)
+    if subject_ids is not None:
+        query = query.filter(TrainingVideo.subject_id.in_(subject_ids))
     if training_config_id:
         query = query.filter(TrainingVideo.training_config_id == training_config_id)
     if status:
@@ -1144,7 +1359,7 @@ def _validate_training_video_config_match(subject_id: str | None, training_confi
         return
     config = _get_training_config_row(training_config_id)
     if config and config.subject_id != subject_id:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
 
 
 def update_training_video_record(video_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -1184,7 +1399,7 @@ def update_training_video_record(video_id: str, payload: dict[str, Any]) -> dict
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise InvalidReferenceError("invalid_reference") from exc
+        raise InvalidReferenceError("关联数据不存在") from exc
     return serialize_training_video(video)
 
 
@@ -1196,7 +1411,7 @@ def delete_training_video_record(video_id: str) -> bool:
         AnalysisJob.query.filter(AnalysisJob.training_video_id == video_id).first() is not None
         or KinematicsDataset.query.filter(KinematicsDataset.training_video_id == video_id).first() is not None
     ):
-        raise ReferenceConflictError("in_use")
+        raise ReferenceConflictError("被其他记录引用，无法删除")
     db.session.delete(video)
     db.session.commit()
     return True
@@ -1218,7 +1433,7 @@ def upsert_analysis_job_from_record(record: Any) -> None:
     job.subject_id = meta.get("user_id") or job.subject_id
     job.training_video_id = meta.get("training_video_id") or job.training_video_id
     job.training_config_id = meta.get("training_config_id") or job.training_config_id
-    job.analysis_profile = meta.get("analysis_profile") or job.analysis_profile or "fast"
+    job.analysis_profile = meta.get("analysis_profile") or job.analysis_profile or "快速"
     job.input_probe_json = meta.get("input_probe")
     job.estimated_duration_s = meta.get("estimated_duration_s")
     job.stereo_params_path = meta.get("stereo_params_override")
@@ -1335,19 +1550,46 @@ def _grade_from_score(score: int | None) -> str | None:
     if score is None:
         return None
     if score >= 90:
-        return "excellent"
+        return "优秀"
     if score >= 75:
-        return "good"
+        return "良好"
     if score >= 60:
-        return "pass"
-    return "needs_work"
+        return "合格"
+    return "待提高"
 
 
 def serialize_kinematics_dataset(dataset: KinematicsDataset) -> dict[str, Any]:
+    # JOIN 查询人类可读字段
+    subject_name = None
+    if dataset.subject_id:
+        subj = db.session.get(Subject, dataset.subject_id)
+        if subj:
+            subject_name = subj.name
+
+    job = None
+    if dataset.job_id:
+        job = db.session.get(AnalysisJob, dataset.job_id)
+
+    video = None
+    if dataset.training_video_id:
+        video = db.session.get(TrainingVideo, dataset.training_video_id)
+
+    evaluation = EvaluationRecord.query.filter(
+        EvaluationRecord.kinematics_dataset_id == dataset.id,
+    ).first()
+
     return {
         "id": dataset.id,
         "jobId": dataset.job_id,
         "subjectId": dataset.subject_id,
+        "subjectName": subject_name or "未知受试者",
+        "stepName": (job.step_display_name if job and job.step_display_name else "未命名"),
+        "mode": (job.report_mode if job else None),
+        "profile": (job.analysis_profile if job else None),
+        "score": evaluation.score if evaluation else None,
+        "grade": (evaluation.grade if evaluation else "未评估"),
+        "leftVideoName": (video.left_original_name if video else None),
+        "rightVideoName": (video.right_original_name if video else None),
         "trainingVideoId": dataset.training_video_id,
         "reportPayloadPath": dataset.report_payload_path,
         "chartBundlePath": dataset.chart_bundle_path,
@@ -1366,6 +1608,7 @@ def list_kinematics_datasets_page(
     *,
     keyword: str | None = None,
     subject_id: str | None = None,
+    subject_ids: list[str] | None = None,
     job_id: str | None = None,
     training_video_id: str | None = None,
     limit: int | None = None,
@@ -1374,6 +1617,8 @@ def list_kinematics_datasets_page(
     query = KinematicsDataset.query
     if subject_id:
         query = query.filter(KinematicsDataset.subject_id == subject_id)
+    if subject_ids is not None:
+        query = query.filter(KinematicsDataset.subject_id.in_(subject_ids))
     if job_id:
         query = query.filter(KinematicsDataset.job_id == job_id)
     if training_video_id:
@@ -1459,6 +1704,7 @@ def list_evaluations_page(
     *,
     keyword: str | None = None,
     subject_id: str | None = None,
+    subject_ids: list[str] | None = None,
     analysis_job_id: str | None = None,
     kinematics_dataset_id: str | None = None,
     footwork_type_id: str | None = None,
@@ -1472,6 +1718,8 @@ def list_evaluations_page(
     query = EvaluationRecord.query
     if subject_id:
         query = query.filter(EvaluationRecord.subject_id == subject_id)
+    if subject_ids is not None:
+        query = query.filter(EvaluationRecord.subject_id.in_(subject_ids))
     if analysis_job_id:
         query = query.filter(EvaluationRecord.analysis_job_id == analysis_job_id)
     if kinematics_dataset_id:
@@ -1516,9 +1764,9 @@ def _validate_video_subject(video_id: str | None, subject_id: str | None) -> Non
         return
     video = TrainingVideo.query.filter(TrainingVideo.id == video_id).first()
     if video is None:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     if video.subject_id != subject_id:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
 
 
 def _validate_evaluation_reference_graph(
@@ -1534,36 +1782,36 @@ def _validate_evaluation_reference_graph(
     _validate_route_footwork_match(route_definition_id, footwork_type_id)
 
     if job and job.subject_id and job.subject_id != subject_id:
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     if dataset:
         if dataset.subject_id != subject_id:
-            raise InvalidReferenceError("invalid_reference")
+            raise InvalidReferenceError("关联数据不存在")
         if analysis_job_id and dataset.job_id != analysis_job_id:
-            raise InvalidReferenceError("invalid_reference")
+            raise InvalidReferenceError("关联数据不存在")
         _validate_video_subject(dataset.training_video_id, subject_id)
 
     if job:
         _validate_video_subject(job.training_video_id, subject_id)
         if dataset and job.training_video_id and dataset.training_video_id and job.training_video_id != dataset.training_video_id:
-            raise InvalidReferenceError("invalid_reference")
+            raise InvalidReferenceError("关联数据不存在")
         if job.training_config_id:
             config = _get_training_config_row(job.training_config_id)
             if config and config.subject_id != subject_id:
-                raise InvalidReferenceError("invalid_reference")
+                raise InvalidReferenceError("关联数据不存在")
             if (
                 config
                 and footwork_type_id
                 and config.footwork_type_id
                 and config.footwork_type_id != footwork_type_id
             ):
-                raise InvalidReferenceError("invalid_reference")
+                raise InvalidReferenceError("关联数据不存在")
             if (
                 config
                 and route_definition_id
                 and config.route_definition_id
                 and config.route_definition_id != route_definition_id
             ):
-                raise InvalidReferenceError("invalid_reference")
+                raise InvalidReferenceError("关联数据不存在")
 
 
 def _evaluation_values_from_payload(
@@ -1621,7 +1869,7 @@ def create_evaluation_record(payload: dict[str, Any]) -> dict[str, Any]:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise InvalidReferenceError("invalid_reference") from exc
+        raise InvalidReferenceError("关联数据不存在") from exc
     return serialize_evaluation(evaluation)
 
 
@@ -1636,7 +1884,7 @@ def update_evaluation_record(evaluation_id: str, payload: dict[str, Any]) -> dic
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise InvalidReferenceError("invalid_reference") from exc
+        raise InvalidReferenceError("关联数据不存在") from exc
     return serialize_evaluation(evaluation)
 
 
@@ -1875,15 +2123,26 @@ def get_account_payload(account_id: str) -> dict[str, Any] | None:
 
 def _account_values_from_payload(payload: dict[str, Any], *, existing: Account | None = None) -> dict[str, Any]:
     account = str(payload.get("account", existing.account if existing else "") or "").strip()
-    password_hash = str(payload.get("passwordHash", existing.password_hash if existing else "") or "").strip()
     username = _clean_text(payload.get("username", existing.username if existing else ""))
     status = str(payload.get("status", existing.status if existing else "active") or "active").strip()
     if not account:
-        raise ValueError("account_required")
+        raise ValueError("请填写账号")
     if not username:
-        raise ValueError("username_required")
+        raise ValueError("请填写用户名")
     if not status:
-        raise ValueError("status_required")
+        raise ValueError("请填写状态")
+
+    # Password handling: only for new accounts, hash via PBKDF2; updates never touch password_hash
+    raw_password = str(payload.get("passwordHash") or "").strip()
+    if existing is None:
+        # New account — require initial password
+        if not raw_password:
+            raise ValueError("请填写密码")
+        password_hash = _hash_account_password(raw_password)
+    else:
+        # Update — keep existing password_hash unchanged
+        password_hash = existing.password_hash
+
     return {
         "account": account,
         "password_hash": password_hash,
@@ -1892,12 +2151,20 @@ def _account_values_from_payload(payload: dict[str, Any], *, existing: Account |
     }
 
 
+def _hash_account_password(password: str) -> str:
+    """PBKDF2-SHA256 hash, compatible with auth.py."""
+    import hashlib
+    salt = "pose3d_salt_v1"
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return f"pbkdf2:sha256:100000${salt}${dk.hex()}"
+
+
 def _ensure_account_available(*, account_id: str | None, account: str) -> None:
     query = Account.query.filter(Account.account == account)
     if account_id:
         query = query.filter(Account.id != account_id)
     if query.first() is not None:
-        raise DuplicateRecordError("duplicate_account")
+        raise DuplicateRecordError("账号已存在")
 
 
 def create_account_record(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1909,7 +2176,7 @@ def create_account_record(payload: dict[str, Any]) -> dict[str, Any]:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_account") from exc
+        raise DuplicateRecordError("账号已存在") from exc
     return serialize_account(row)
 
 
@@ -1926,7 +2193,7 @@ def update_account_record(account_id: str, payload: dict[str, Any]) -> dict[str,
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_account") from exc
+        raise DuplicateRecordError("账号已存在") from exc
     return serialize_account(row)
 
 
@@ -1971,9 +2238,9 @@ def _role_values_from_payload(payload: dict[str, Any], *, existing: Role | None 
     code = str(payload.get("code", existing.code if existing else "") or "").strip().lower()
     name = _clean_text(payload.get("name", existing.name if existing else ""))
     if not code:
-        raise ValueError("code_required")
+        raise ValueError("请填写编码")
     if not name:
-        raise ValueError("name_required")
+        raise ValueError("请填写名称")
     return {"code": code, "name": name}
 
 
@@ -1982,7 +2249,7 @@ def _ensure_role_code_available(*, role_id: str | None, code: str) -> None:
     if role_id:
         query = query.filter(Role.id != role_id)
     if query.first() is not None:
-        raise DuplicateRecordError("duplicate_code")
+        raise DuplicateRecordError("编码已存在")
 
 
 def create_role_record(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1994,7 +2261,7 @@ def create_role_record(payload: dict[str, Any]) -> dict[str, Any]:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_code") from exc
+        raise DuplicateRecordError("编码已存在") from exc
     return serialize_role(row)
 
 
@@ -2010,7 +2277,7 @@ def update_role_record(role_id: str, payload: dict[str, Any]) -> dict[str, Any] 
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_code") from exc
+        raise DuplicateRecordError("编码已存在") from exc
     return serialize_role(row)
 
 
@@ -2019,9 +2286,9 @@ def delete_role_record(role_id: str) -> bool:
     if row is None:
         return False
     if AccountRole.query.filter(AccountRole.role_id == role_id).first() is not None:
-        raise ReferenceConflictError("in_use")
+        raise ReferenceConflictError("被其他记录引用，无法删除")
     if RolePermission.query.filter(RolePermission.role_id == role_id).first() is not None:
-        raise ReferenceConflictError("in_use")
+        raise ReferenceConflictError("被其他记录引用，无法删除")
     db.session.delete(row)
     db.session.commit()
     return True
@@ -2055,9 +2322,9 @@ def _permission_values_from_payload(
     code = str(payload.get("code", existing.code if existing else "") or "").strip().lower()
     name = _clean_text(payload.get("name", existing.name if existing else ""))
     if not code:
-        raise ValueError("code_required")
+        raise ValueError("请填写编码")
     if not name:
-        raise ValueError("name_required")
+        raise ValueError("请填写名称")
     return {"code": code, "name": name}
 
 
@@ -2066,7 +2333,7 @@ def _ensure_permission_code_available(*, permission_id: str | None, code: str) -
     if permission_id:
         query = query.filter(Permission.id != permission_id)
     if query.first() is not None:
-        raise DuplicateRecordError("duplicate_code")
+        raise DuplicateRecordError("编码已存在")
 
 
 def create_permission_record(payload: dict[str, Any]) -> dict[str, Any]:
@@ -2078,7 +2345,7 @@ def create_permission_record(payload: dict[str, Any]) -> dict[str, Any]:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_code") from exc
+        raise DuplicateRecordError("编码已存在") from exc
     return serialize_permission(row)
 
 
@@ -2094,7 +2361,7 @@ def update_permission_record(permission_id: str, payload: dict[str, Any]) -> dic
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise DuplicateRecordError("duplicate_code") from exc
+        raise DuplicateRecordError("编码已存在") from exc
     return serialize_permission(row)
 
 
@@ -2103,7 +2370,7 @@ def delete_permission_record(permission_id: str) -> bool:
     if row is None:
         return False
     if RolePermission.query.filter(RolePermission.permission_id == permission_id).first() is not None:
-        raise ReferenceConflictError("in_use")
+        raise ReferenceConflictError("被其他记录引用，无法删除")
     db.session.delete(row)
     db.session.commit()
     return True
@@ -2142,7 +2409,7 @@ def replace_account_roles(account_id: str, payload: dict[str, Any]) -> tuple[lis
     role_ids = _unique_text_ids(payload.get("roleIds"), field="role_ids")
     count = Role.query.filter(Role.id.in_(role_ids)).count() if role_ids else 0
     if count != len(role_ids):
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     AccountRole.query.filter(AccountRole.account_id == account_id).delete()
     for role_id in role_ids:
         db.session.add(AccountRole(account_id=account_id, role_id=role_id))
@@ -2168,7 +2435,7 @@ def replace_role_permissions(role_id: str, payload: dict[str, Any]) -> tuple[lis
     permission_ids = _unique_text_ids(payload.get("permissionIds"), field="permission_ids")
     count = Permission.query.filter(Permission.id.in_(permission_ids)).count() if permission_ids else 0
     if count != len(permission_ids):
-        raise InvalidReferenceError("invalid_reference")
+        raise InvalidReferenceError("关联数据不存在")
     RolePermission.query.filter(RolePermission.role_id == role_id).delete()
     for permission_id in permission_ids:
         db.session.add(RolePermission(role_id=role_id, permission_id=permission_id))

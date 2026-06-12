@@ -1,5 +1,6 @@
 /** 历史报告数据管理：列表、删除、对比、用户档案。 */
 import { ref } from 'vue'
+import { request } from '../services/api.js'
 
 export function useReportHistory() {
   const reports = ref([])
@@ -10,18 +11,16 @@ export function useReportHistory() {
 
   async function fetchUsers() {
     try {
-      const resp = await fetch('/api/users')
-      const payload = await resp.json().catch(() => ({}))
-      if (resp.ok && payload.ok) users.value = payload.items || []
+      const payload = await request('/api/users')
+      users.value = payload.items || []
     } catch {}
   }
 
   async function fetchUserProfile(userId) {
     if (!userId) { userProfile.value = null; return }
     try {
-      const resp = await fetch('/api/users/' + encodeURIComponent(userId))
-      const payload = await resp.json().catch(() => ({}))
-      if (resp.ok && payload.ok) userProfile.value = payload.user || payload.item || null
+      const payload = await request('/api/users/' + encodeURIComponent(userId))
+      userProfile.value = payload.user || payload.item || null
     } catch { userProfile.value = null }
   }
 
@@ -36,13 +35,8 @@ export function useReportHistory() {
       if (filters.endDate) url += '&end_date=' + encodeURIComponent(filters.endDate)
       if (filters.stepName) url += '&step_name=' + encodeURIComponent(filters.stepName)
 
-      const resp = await fetch(url)
-      const payload = await resp.json().catch(() => ({}))
-      if (!resp.ok || !payload.ok || !Array.isArray(payload.items)) {
-        reports.value = []
-        return
-      }
-      reports.value = payload.items.map(formatReport)
+      const payload = await request(url)
+      reports.value = Array.isArray(payload.items) ? payload.items.map(formatReport) : []
     } catch (err) {
       error.value = err.message || '加载失败'
       reports.value = []
@@ -56,7 +50,7 @@ export function useReportHistory() {
     return {
       id: item.id,
       date: formatDate(item.completedAt),
-      mode: item.mode || 'eval',
+      mode: item.mode || '练习评估',
       stepName: item.stepName || '未知步伐',
       summary: {
         loops: summary.loops || 0,
@@ -80,18 +74,15 @@ export function useReportHistory() {
 
   async function deleteReport(reportId) {
     try {
-      const resp = await fetch('/api/reports/' + encodeURIComponent(reportId), { method: 'DELETE' })
-      const payload = await resp.json().catch(() => ({}))
-      return !!(resp.ok && payload.ok)
+      await request('/api/reports/' + encodeURIComponent(reportId), { method: 'DELETE' })
+      return true
     } catch { return false }
   }
 
   async function compareReports(ids) {
     try {
-      const resp = await fetch('/api/reports/compare?ids=' + encodeURIComponent(ids.join(',')))
-      const payload = await resp.json().catch(() => ({}))
-      if (resp.ok && payload.ok && payload.reports) return payload.reports
-      return []
+      const payload = await request('/api/reports/compare?ids=' + encodeURIComponent(ids.join(',')))
+      return payload.reports || []
     } catch { return [] }
   }
 

@@ -1,17 +1,18 @@
-"""运行时必需。3D 姿态重建管线 CLI：2D 检测 → 三角化 → 可选可视化导出；web_1 pose3d_service 子进程调用。"""
 import importlib.util
-import re
 import time
 from pathlib import Path
+
+import pandas as pd
 
 from pose3d_pkg.calibration.stereo_calibrate import prepare_stereo_params
 from pose3d_pkg.io.video_filter import export_filtered_stereo_videos
 from pose3d_pkg.io.video_reader import StereoVideoReader
 from pose3d_pkg.triangulation.projection import run_build_projection_summary
-from pose3d_pkg.triangulation.temporal_filter import temporal_filter_pose3d_abs_csv
+from pose3d_pkg.triangulation.temporal_filter import ground_align_pose3d_abs_csv, export_pose3d_wide_csv
 from pose3d_pkg.triangulation.triangulate_pose import triangulate_pose_csv
-from pose3d_pkg.viz.animate_pose3d import animate_pose3d
 from pose3d_pkg.viz.paraview_export import export_paraview_csv_series
+from pose3d_pkg.postprocess.pipeline import postprocess_wide_df
+from pose3d_pkg.calibration.yellow_control_points import build_ground_homography_summary
 
 
 def load_settings_from_py(config_path: str):
@@ -26,67 +27,82 @@ def load_settings_from_py(config_path: str):
 
 
 def discover_stereo_pairs(settings):
+    """遍历 data/<group>/<person>/left|right/ 结构，按同名文件配对。"""
     input_cfg = settings.get("input", {})
-
-    # 兼容旧版：明确写 video_sources + stereo_pair
-    if input_cfg.get("video_sources") and input_cfg.get("stereo_pair"):
-        stereo_pair = input_cfg["stereo_pair"]
-        video_sources = input_cfg["video_sources"]
-        return [{
-            "pair_index": 1,
-            "pair_name": "pair_001",
-            "left_video": str(video_sources[stereo_pair[0]]),
-            "right_video": str(video_sources[stereo_pair[1]]),
-        }]
-
-    session_dir = Path(input_cfg["session_dir"])
-    left_prefix = str(input_cfg.get("left_prefix", "left"))
-    right_prefix = str(input_cfg.get("right_prefix", "right"))
-    allowed_extensions = {str(ext).lower() for ext in input_cfg.get("allowed_extensions", [".mp4", ".avi", ".mov", ".mkv"])}
-    process_pair_indices = input_cfg.get("process_pair_indices")
-    if process_pair_indices is not None:
-        process_pair_indices = {int(v) for v in process_pair_indices}
-
-    left_regex = re.compile(rf"^{re.escape(left_prefix)}(\d+)$", re.IGNORECASE)
-    right_regex = re.compile(rf"^{re.escape(right_prefix)}(\d+)$", re.IGNORECASE)
-
-    left_map = {}
-    right_map = {}
-    for path in session_dir.iterdir():
-        if not path.is_file() or path.suffix.lower() not in allowed_extensions:
-            continue
-        m_left = left_regex.match(path.stem)
-        if m_left:
-            left_map[int(m_left.group(1))] = str(path)
-            continue
-        m_right = right_regex.match(path.stem)
-        if m_right:
-            right_map[int(m_right.group(1))] = str(path)
-
-    common_ids = sorted(set(left_map.keys()) & set(right_map.keys()))
-    if process_pair_indices is not None:
-        common_ids = [idx for idx in common_ids if idx in process_pair_indices]
-
-    if not common_ids:
-        raise FileNotFoundError(
-            f"在 {session_dir} 下未找到成对视频。要求命名格式示例：{left_prefix}1.mp4 / {right_prefix}1.mp4"
-        )
+    data_root = Path(input_cfg["data_root"])
+    groups = input_cfg.get("groups", [])
+    allowed_extensions = {
+        str(ext).lower()
+        for ext in input_cfg.get("allowed_extensions", [".mp4", ".avi", ".mov", ".mkv"])
+    }
 
     pairs = []
-    for idx in common_ids:
-        pairs.append({
-            "pair_index": int(idx),
-            "pair_name": f"pair_{int(idx):03d}",
-            "left_video": left_map[idx],
-            "right_video": right_map[idx],
-        })
+    for group_spec in groups:
+        group_path = Path(group_spec)
+        # 相对路径 → 拼到 data_root 下；绝对路径 → 直接使用
+        if not group_path.is_absolute():
+            group_path = data_root / group_path
+
+        if not group_path.is_dir():
+            print(f"警告：组目录不存在，跳过: {group_path}")
+            continue
+
+        group_name = group_path.name  # 用目录名作为输出标识
+
+        stereo_params_json = group_path / "stereo_params.json"
+
+        for person_dir in sorted(group_path.iterdir()):
+            if not person_dir.is_dir():
+                continue
+            person_name = person_dir.name
+
+            left_dir = person_dir / "left"
+            right_dir = person_dir / "right"
+            if not left_dir.is_dir() or not right_dir.is_dir():
+                continue
+
+            for left_file in sorted(left_dir.iterdir()):
+                if not left_file.is_file():
+                    continue
+                if left_file.suffix.lower() not in allowed_extensions:
+                    continue
+
+                right_file = right_dir / left_file.name
+                if not right_file.is_file():
+                    print(
+                        f"警告：{group_name}/{person_name} 中 {left_file.name} "
+                        f"在 right/ 下无匹配，跳过"
+                    )
+                    continue
+
+                file_stem = left_file.stem
+                pairs.append({
+                    "group": group_name,
+                    "person": person_name,
+                    "file_stem": file_stem,
+                    "pair_name": f"{group_name}_{person_name}_{file_stem}",
+                    "left_video": str(left_file),
+                    "right_video": str(right_file),
+                    "stereo_params_json": str(stereo_params_json),
+                })
+
+    if not pairs:
+        raise FileNotFoundError(
+            f"在 {data_root} 下的各组目录中未找到任何成对视频。\n"
+            f"期望结构：data/<group>/<person>/left/<video> + data/<group>/<person>/right/<video>"
+        )
+
     return pairs
 
 
 def build_pair_output_paths(settings, pair_info):
-    outputs = settings["outputs"]
-    output_root = Path(outputs["output_dir"])
-    pair_dir = output_root / pair_info["pair_name"]
+    output_root = Path(settings["input"]["output_root"])
+    pair_dir = (
+        output_root
+        / pair_info["group"]
+        / pair_info["person"]
+        / pair_info["file_stem"]
+    )
     pair_dir.mkdir(parents=True, exist_ok=True)
 
     return {
@@ -95,15 +111,101 @@ def build_pair_output_paths(settings, pair_info):
         "pose2d_csv": str(pair_dir / "pose2d_all.csv"),
         "pose3d_abs_csv": str(pair_dir / "pose3d_abs.csv"),
         "pose3d_relative_csv": str(pair_dir / "pose3d_relative.csv"),
-        "pose3d_abs_filtered_csv": str(pair_dir / "pose3d_abs_filtered.csv"),
-        "pose3d_abs_filtered_ground0_csv": str(pair_dir / settings.get("ground_alignment", {}).get("extra_abs_ground_aligned_filename", "pose3d_abs_filtered_zup_ground0.csv")),
-        "pose3d_relative_filtered_csv": str(pair_dir / "pose3d_relative_filtered.csv"),
+        "pose3d_abs_ground_aligned_csv": str(pair_dir / "pose3d_abs_zup_ground0.csv"),
+        "pose3d_wide_csv": str(pair_dir / "pose3d_wide.csv"),
+        "pose3d_wide_processed_csv": str(pair_dir / "pose3d_wide_processed.csv"),
         "pose2d_vis_left_video": str(pair_dir / "pose2d_left_overlay.mp4"),
         "pose2d_vis_right_video": str(pair_dir / "pose2d_right_overlay.mp4"),
         "pose2d_vis_stereo_video": str(pair_dir / "pose2d_stereo_overlay.mp4"),
-        "pose3d_animation_path": str(pair_dir / "pose3d_animation.mp4"),
         "paraview_dir": str(pair_dir / "paraview"),
     }
+
+
+class _PostProcessParams:
+    """将 postprocess 配置 dict 包装为属性访问对象，供后处理模块使用。"""
+
+    def __init__(self, pp: dict):
+        self.FPS = float(pp.get("fps", 100.0))
+        self.FRAME_COL = "frame_id"
+        self.FINAL_OUTPUT_NAME = pp.get("final_output_name", "pose3d_wide_processed.csv")
+        self.OUTLIER = pp.get("outlier", {})
+        self.INTERPOLATION = pp.get("interpolation", {})
+        self.FILTER = pp.get("filter", {})
+
+
+def _build_postprocess_params(postproc_cfg: dict) -> _PostProcessParams:
+    return _PostProcessParams(postproc_cfg)
+
+
+def _pre_calibrate_all_groups(settings, pairs):
+    """在正式处理前，按 group 各标定一次地面控制点。
+
+    每个 group 取其第一个 pair 的第0帧，弹出左右窗口手动标定 TL/TR/BR/BL。
+    点位保存到 data/<group>/ground_control_points.json，同 group 下所有 pair 共享。
+    """
+    reconstruction_mode = settings.get("pose3d", {}).get("reconstruction_mode", "")
+    if reconstruction_mode != "ground_homography_rays":
+        print("当前 reconstruction_mode 非 ground_homography_rays，跳过地面控制点预标定。")
+        return
+
+    # 按 group 去重，每个 group 只标一次
+    group_first_pairs: dict[str, dict] = {}
+    for pair_info in pairs:
+        group = pair_info["group"]
+        if group not in group_first_pairs:
+            group_first_pairs[group] = pair_info
+
+    if not group_first_pairs:
+        return
+
+    print(f"\n{'='*60}")
+    print(f"地面控制点预标定：共 {len(group_first_pairs)} 个 group")
+    print(f"{'='*60}")
+
+    for group_name, pair_info in group_first_pairs.items():
+        group_dir = Path(pair_info["stereo_params_json"]).parent  # data/<group>/
+        points_json_path = str(group_dir / "ground_control_points.json")
+
+        if Path(points_json_path).exists():
+            print(f"  [{group_name}] 标定点位已存在: {points_json_path}，跳过")
+            continue
+
+        print(f"\n  [{group_name}] 开始标定，使用 {pair_info['pair_name']} 的第0帧...")
+
+        stereo_params_json = prepare_stereo_params(
+            settings, pair_info["stereo_params_json"]
+        )
+
+        # 临时设置 group 级别的标定路径
+        ground_cfg = settings.setdefault("ground_control", {})
+        manual_cfg = ground_cfg.setdefault("manual_annotation", {})
+        debug_cfg = ground_cfg.setdefault("debug", {})
+
+        manual_cfg["points_json_path"] = points_json_path
+        debug_cfg["debug_dir"] = str(group_dir / "ground_control_debug")
+
+        # 强制标定：不读取已有文件
+        manual_cfg["reuse_saved_points"] = False
+        manual_cfg["force_repick"] = False
+        manual_cfg["save_points_json"] = True
+
+        # 调用标定流程。输出到临时文件，标定完成后删除（只需 points_json 就够了）
+        temp_summary_path = str(group_dir / "_temp_calib_summary.json")
+        build_ground_homography_summary(
+            stereo_params_json=stereo_params_json,
+            left_video=pair_info["left_video"],
+            right_video=pair_info["right_video"],
+            ground_cfg=ground_cfg,
+            output_json_path=temp_summary_path,
+        )
+        # 清理临时文件
+        Path(temp_summary_path).unlink(missing_ok=True)
+
+        print(f"  [{group_name}] 标定完成: {points_json_path}")
+
+    print(f"\n{'='*60}")
+    print("地面控制点预标定全部完成，开始处理所有 pair...")
+    print(f"{'='*60}")
 
 
 def run_pose2d_detector(settings, left_video: str, right_video: str, pose2d_csv: str, pose2d_vis_paths: dict):
@@ -158,8 +260,7 @@ def process_one_pair(settings, stereo_params_json: str, pair_info: dict):
     timings: dict[str, float] = {}
     outputs = settings["outputs"]
     filter_cfg = settings.get("video_filter", {"enabled": False})
-    temporal_filter_cfg = settings.get("temporal_filter", {"enabled": False})
-    temporal_filter_enabled = temporal_filter_cfg.get("enabled", False)
+    ground_align_enabled = settings.get("ground_alignment", {}).get("enabled", False)
     paraview_cfg = settings.get("paraview_export", {"enabled": False})
     pair_paths = build_pair_output_paths(settings, pair_info)
 
@@ -191,8 +292,19 @@ def process_one_pair(settings, stereo_params_json: str, pair_info: dict):
 
     if settings["pipeline"].get("run_build_projection", False):
         t0 = time.perf_counter()
+
+        # 为当前 pair 设置输出路径
+        # 标定点位存到 group 级别目录，同 group 所有 pair 共享
+        ground_cfg = settings.setdefault("ground_control", {})
+        manual_cfg = ground_cfg.setdefault("manual_annotation", {})
+        debug_cfg = ground_cfg.setdefault("debug", {})
+        group_dir = Path(pair_info["stereo_params_json"]).parent  # data/<group>/
+        manual_cfg["points_json_path"] = str(group_dir / "ground_control_points.json")
+        debug_cfg["debug_dir"] = str(group_dir / "ground_control_debug")
+        manual_cfg["reuse_saved_points"] = True
+        manual_cfg["force_repick"] = False
+
         if settings.get("pose3d", {}).get("reconstruction_mode") == "ground_homography_rays":
-            manual_cfg = settings.get("ground_control", {}).get("manual_annotation", {})
             if manual_cfg.get("reuse_saved_points", True) and not manual_cfg.get("force_repick", False):
                 print("\n地面控制点模式：若已存在保存点位，则直接读取；若不存在，则弹出窗口手动标定一次并保存。")
             else:
@@ -245,41 +357,50 @@ def process_one_pair(settings, stereo_params_json: str, pair_info: dict):
         runtime_cfg = settings.get("_runtime", {}) or {}
         pose3d_progress = runtime_cfg.get("pose3d_progress_callback")
         if callable(pose3d_progress):
-            pose3d_progress(0.94, "时序滤波中…")
+            pose3d_progress(0.94, "地面对齐与后处理中…")
 
-        if temporal_filter_enabled:
+        if ground_align_enabled:
             t0 = time.perf_counter()
             ground_align_cfg = settings.get("ground_alignment", {})
-            temporal_filter_pose3d_abs_csv(
+            ground_align_pose3d_abs_csv(
                 input_pose3d_abs_csv_path=pair_paths["pose3d_abs_csv"],
-                output_pose3d_abs_csv_path=pair_paths["pose3d_abs_filtered_csv"],
-                output_pose3d_relative_csv_path=pair_paths["pose3d_relative_filtered_csv"],
-                method=temporal_filter_cfg.get("method", "median_then_mean"),
-                window_size=temporal_filter_cfg.get("window_size", 5),
+                output_pose3d_abs_csv_path=pair_paths["pose3d_abs_ground_aligned_csv"],
+                output_pose3d_relative_csv_path=pair_paths["pose3d_relative_csv"],
                 relative_root_mode=settings["pose3d"]["relative_root_mode"],
                 root_joint_id=settings["pose3d"].get("root_joint_id"),
                 root_joint_name=settings["pose3d"].get("root_joint_name"),
-                ground_align_enabled=ground_align_cfg.get("enabled", False),
+                ground_align_enabled=True,
                 ground_align_joint_names=ground_align_cfg.get("joint_names"),
                 ground_align_statistic=ground_align_cfg.get("statistic", "mean"),
                 ground_align_target_z=ground_align_cfg.get("target_z", 0.0),
-                extra_abs_output_csv_path=(
-                    pair_paths["pose3d_abs_filtered_ground0_csv"]
-                    if ground_align_cfg.get("enabled", False) and ground_align_cfg.get("save_extra_abs_ground_aligned_csv", True)
-                    else None
-                ),
             )
-            timings["temporal_filter_s"] = round(time.perf_counter() - t0, 3)
+            timings["ground_align_s"] = round(time.perf_counter() - t0, 3)
+
+            t0 = time.perf_counter()
+            export_pose3d_wide_csv(
+                input_pose3d_abs_csv_path=pair_paths["pose3d_abs_ground_aligned_csv"],
+                output_wide_csv_path=pair_paths["pose3d_wide_csv"],
+            )
+            timings["wide_export_s"] = round(time.perf_counter() - t0, 3)
+
+            # ---- 数据后处理：异常值 → 插值 → 滤波 ----
+            t0 = time.perf_counter()
+            postproc_cfg = settings.get("postprocess", {})
+            postproc_params = _build_postprocess_params(postproc_cfg)
+
+            wide_df = pd.read_csv(pair_paths["pose3d_wide_csv"])
+            processed_df, postproc_info = postprocess_wide_df(wide_df, postproc_params)
+            processed_df.to_csv(pair_paths["pose3d_wide_processed_csv"], index=False, encoding="utf-8")
+            timings["postprocess_s"] = round(time.perf_counter() - t0, 3)
+            print(f"  后处理完成：异常值 {postproc_info['outlier_total']} 个，插值 {postproc_info['interp_total_filled']} 个点")
         if callable(pose3d_progress):
             pose3d_progress(1.0, "三维姿态重建完成")
 
         if paraview_cfg.get("enabled", False):
             t0 = time.perf_counter()
-            paraview_filtered_source = pair_paths["pose3d_abs_filtered_ground0_csv"] if Path(pair_paths["pose3d_abs_filtered_ground0_csv"]).exists() else pair_paths["pose3d_abs_filtered_csv"]
-            paraview_source_csv = paraview_filtered_source if (
-                paraview_cfg.get("use_filtered_if_available", True)
-                and temporal_filter_enabled
-                and Path(paraview_filtered_source).exists()
+            paraview_source_csv = pair_paths["pose3d_abs_ground_aligned_csv"] if (
+                ground_align_enabled
+                and Path(pair_paths["pose3d_abs_ground_aligned_csv"]).exists()
             ) else pair_paths["pose3d_abs_csv"]
             export_paraview_csv_series(
                 pose3d_abs_csv_path=paraview_source_csv,
@@ -296,30 +417,13 @@ def process_one_pair(settings, stereo_params_json: str, pair_info: dict):
             )
             timings["paraview_export_s"] = round(time.perf_counter() - t0, 3)
 
-    if settings["pipeline"].get("run_pose3d_animation", False) or outputs.get("save_pose3d_animation", False):
-        t0 = time.perf_counter()
-        source = outputs["animation_source"]
-        if temporal_filter_enabled and Path(pair_paths["pose3d_abs_filtered_csv"]).exists() and Path(pair_paths["pose3d_relative_filtered_csv"]).exists():
-            abs_anim_csv = pair_paths["pose3d_abs_filtered_ground0_csv"] if Path(pair_paths["pose3d_abs_filtered_ground0_csv"]).exists() else pair_paths["pose3d_abs_filtered_csv"]
-            csv_path = pair_paths["pose3d_relative_filtered_csv"] if source == "relative" else abs_anim_csv
-        else:
-            csv_path = pair_paths["pose3d_relative_csv"] if source == "relative" else pair_paths["pose3d_abs_csv"]
-
-        animate_pose3d(
-            pose3d_csv_path=csv_path,
-            source=source,
-            save_path=pair_paths["pose3d_animation_path"] if outputs.get("save_pose3d_animation", False) else None,
-        )
-        timings["pose3d_animation_s"] = round(time.perf_counter() - t0, 3)
-
     cleanup_map = {
         pair_paths["pose_summary_json"]: outputs.get("save_camera_pose_summary_json", True),
         pair_paths["pose2d_csv"]: outputs.get("save_pose2d_csv", True),
         pair_paths["pose3d_abs_csv"]: outputs.get("save_pose3d_abs_csv", True),
         pair_paths["pose3d_relative_csv"]: outputs.get("save_pose3d_relative_csv", True),
-        pair_paths["pose3d_abs_filtered_csv"]: outputs.get("save_pose3d_abs_filtered_csv", True),
-        pair_paths["pose3d_abs_filtered_ground0_csv"]: settings.get("ground_alignment", {}).get("save_extra_abs_ground_aligned_csv", True),
-        pair_paths["pose3d_relative_filtered_csv"]: outputs.get("save_pose3d_relative_filtered_csv", True),
+        pair_paths["pose3d_abs_ground_aligned_csv"]: outputs.get("save_pose3d_abs_ground_aligned_csv", True),
+        pair_paths["pose3d_wide_csv"]: outputs.get("save_pose3d_wide_csv", True),
     }
     for path_str, keep in cleanup_map.items():
         p = Path(path_str)
@@ -332,9 +436,9 @@ def process_one_pair(settings, stereo_params_json: str, pair_info: dict):
         ("pose2d_all.csv", pair_paths["pose2d_csv"]),
         ("pose3d_abs.csv", pair_paths["pose3d_abs_csv"]),
         ("pose3d_relative.csv", pair_paths["pose3d_relative_csv"]),
-        ("pose3d_abs_filtered.csv", pair_paths["pose3d_abs_filtered_csv"]),
-        ("pose3d_abs_filtered_zup_ground0.csv", pair_paths["pose3d_abs_filtered_ground0_csv"]),
-        ("pose3d_relative_filtered.csv", pair_paths["pose3d_relative_filtered_csv"]),
+        ("pose3d_abs_zup_ground0.csv", pair_paths["pose3d_abs_ground_aligned_csv"]),
+        ("pose3d_wide.csv", pair_paths["pose3d_wide_csv"]),
+        ("pose3d_wide_processed.csv", pair_paths["pose3d_wide_processed_csv"]),
         ("ParaView目录", pair_paths["paraview_dir"]),
     ]
     existing = [(label, path_str) for label, path_str in artifact_labels if Path(path_str).exists()]
@@ -349,12 +453,19 @@ def main(config_path: str | None = None, settings: dict | None = None):
         if config_path is None:
             config_path = str(Path(__file__).resolve().parents[1] / "user_params.py")
         settings = load_settings_from_py(config_path)
-    stereo_params_json = prepare_stereo_params(settings)
     pairs = discover_stereo_pairs(settings)
 
     pair_timings: dict[str, dict[str, float]] = {}
     print(f"检测到 {len(pairs)} 对双目视频。")
+
+    # 第一步：按 group 预标定地面控制点（video/adult_video1/adult_video2 各一次）
+    _pre_calibrate_all_groups(settings, pairs)
+
+    # 第二步：逐对处理
     for pair_info in pairs:
+        stereo_params_json = prepare_stereo_params(
+            settings, pair_info["stereo_params_json"]
+        )
         pair_timings[pair_info["pair_name"]] = process_one_pair(
             settings=settings,
             stereo_params_json=stereo_params_json,
@@ -363,7 +474,6 @@ def main(config_path: str | None = None, settings: dict | None = None):
 
     print("\n全部流程完成。")
     print(f"detector: {settings['detector']['method']}")
-    print(f"stereo_params_json: {stereo_params_json}")
     return pair_timings
 
 

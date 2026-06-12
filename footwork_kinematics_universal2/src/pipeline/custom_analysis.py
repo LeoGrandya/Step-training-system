@@ -1,5 +1,5 @@
+
 # -*- coding: utf-8 -*-
-"""运行时必需。运动学主流程：读 pose3d CSV、切分步伐单元、算指标并导出图表 JSON；由 web_1 kinematics_service 调用。"""
 from __future__ import annotations
 
 import math
@@ -9,9 +9,6 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 import warnings
@@ -86,30 +83,10 @@ def _estimate_ground_z(long_df: pd.DataFrame, fallback: float = 0.0) -> float:
     return float(np.percentile(z.to_numpy(), 5))
 
 
-def _estimate_center_xy(
-    frame_df: pd.DataFrame,
-    n_head: int = 60,
-    mode: str = "head_mean",
-) -> Tuple[float, float]:
-    valid = frame_df[["com_x", "com_y"]].dropna()
-    if valid.empty:
+def _estimate_center_xy(frame_df: pd.DataFrame, n_head: int = 60) -> Tuple[float, float]:
+    sub = frame_df[["com_x", "com_y"]].dropna().head(n_head)
+    if sub.empty:
         return (0.0, 0.0)
-
-    mode = str(mode or "head_mean").strip().lower()
-    if mode == "robust_quantile":
-        return (float(valid["com_x"].median()), float(valid["com_y"].median()))
-
-    if mode == "static_window":
-        speed_col = "com_horizontal_speed_mps" if "com_horizontal_speed_mps" in frame_df.columns else "com_speed_mps"
-        speed = pd.to_numeric(frame_df.get(speed_col, pd.Series(dtype=float)), errors="coerce")
-        speed = speed.replace([np.inf, -np.inf], np.nan)
-        if not speed.dropna().empty:
-            q = float(speed.quantile(0.35))
-            still = frame_df.loc[speed <= q, ["com_x", "com_y"]].dropna()
-            if len(still) >= 10:
-                return (float(still["com_x"].median()), float(still["com_y"].median()))
-
-    sub = valid.head(n_head)
     return (float(sub["com_x"].mean()), float(sub["com_y"].mean()))
 
 
@@ -132,42 +109,6 @@ def _locate_nine_grid_cell(x, y, center_xy, cell_size=0.9, total_size=2.7):
     col = 2 - col
     row_from_top = 2 - row_from_bottom
     return int(row_from_top * 3 + col + 1)
-
-
-def _locate_nine_grid_cell_series(
-    x: pd.Series,
-    y: pd.Series,
-    center_xy: tuple[float, float],
-    cell_size: float = 0.9,
-    total_size: float = 2.7,
-) -> pd.Series:
-    cx, cy = center_xy
-    half = total_size / 2.0
-    x_min = cx - half
-    y_min = cy - half
-    x_num = pd.to_numeric(x, errors="coerce")
-    y_num = pd.to_numeric(y, errors="coerce")
-    in_bounds = (
-        x_num.ge(x_min)
-        & x_num.le(x_min + total_size)
-        & y_num.ge(y_min)
-        & y_num.le(y_min + total_size)
-    )
-    col = np.floor((x_num - x_min) / cell_size).astype("Float64")
-    row_from_bottom = np.floor((y_num - y_min) / cell_size).astype("Float64")
-    valid_idx = (
-        in_bounds
-        & col.ge(0)
-        & col.le(2)
-        & row_from_bottom.ge(0)
-        & row_from_bottom.le(2)
-    )
-    out = pd.Series(np.nan, index=x.index, dtype="Float64")
-    if valid_idx.any():
-        col_valid = (2 - col[valid_idx]).astype(int)
-        row_top_valid = (2 - row_from_bottom[valid_idx]).astype(int)
-        out.loc[valid_idx] = (row_top_valid * 3 + col_valid + 1).astype(float)
-    return out
 
 
 def _vector_angle_deg(v1: np.ndarray, v2: np.ndarray) -> float:
@@ -209,30 +150,11 @@ def _derivative(series: pd.Series, dt: float) -> pd.Series:
 
 
 def _consecutive_lengths(values: List[object]) -> List[int]:
-    def _safe_truthy(x: object) -> bool:
-        if x is None or x is pd.NA:
-            return False
-        if isinstance(x, (bool, np.bool_)):
-            return bool(x)
-        if isinstance(x, (int, np.integer)):
-            return int(x) != 0
-        if isinstance(x, (float, np.floating)):
-            return (not np.isnan(float(x))) and float(x) != 0.0
-        if isinstance(x, str):
-            return x != ""
-        return False
-
     out = []
     last = object()
     count = 0
     for v in values:
-        v_missing = _safe_truthy(pd.isna(v))
-        last_missing = _safe_truthy(pd.isna(last))
-        same = False
-        if v_missing and last_missing:
-            same = True
-        elif (not v_missing) and (not last_missing):
-            same = _safe_truthy(v == last)
+        same = (pd.isna(v) and pd.isna(last)) or (v == last)
         if same:
             count += 1
         else:
@@ -243,10 +165,9 @@ def _consecutive_lengths(values: List[object]) -> List[int]:
 
 
 def _first_run_start(bool_series: pd.Series, start_idx: int, min_len: int) -> Optional[int]:
-    vals = bool_series.fillna(False).astype(bool).tolist()
     run = 0
-    for i in range(start_idx, len(vals)):
-        if vals[i]:
+    for i in range(start_idx, len(bool_series)):
+        if bool(bool_series.iloc[i]):
             run += 1
             if run >= min_len:
                 return i - min_len + 1
@@ -256,10 +177,9 @@ def _first_run_start(bool_series: pd.Series, start_idx: int, min_len: int) -> Op
 
 
 def _first_run_end(bool_series: pd.Series, start_idx: int, min_len: int) -> Optional[int]:
-    vals = bool_series.fillna(False).astype(bool).tolist()
     run = 0
-    for i in range(start_idx, len(vals)):
-        if vals[i]:
+    for i in range(start_idx, len(bool_series)):
+        if bool(bool_series.iloc[i]):
             run += 1
             if run >= min_len:
                 return i
@@ -488,31 +408,19 @@ def build_frame_metrics(pose_df: pd.DataFrame, params: dict) -> pd.DataFrame:
     frame_df["left_clearance_m"] = (frame_df["left_foot_avg_z_m"] - float(ground_z)).clip(lower=0.0)
     frame_df["right_clearance_m"] = (frame_df["right_foot_avg_z_m"] - float(ground_z)).clip(lower=0.0)
 
-    grid_cfg = params.get("grid", {})
-    center_xy = grid_cfg.get("center_xy")
+    center_xy = params.get("grid", {}).get("center_xy")
     if not center_xy:
-        center_xy = _estimate_center_xy(
-            frame_df,
-            mode=str(grid_cfg.get("center_estimation_mode", "head_mean")),
-        )
+        center_xy = _estimate_center_xy(frame_df)
     center_xy = (float(center_xy[0]), float(center_xy[1]))
-    cell_size = float(grid_cfg.get("cell_size_m", 0.9))
-    total_size = float(grid_cfg.get("total_size_m", 2.7))
-    if bool(grid_cfg.get("dynamic_total_size_m", False)):
-        com_xy = frame_df[["com_x", "com_y"]].apply(pd.to_numeric, errors="coerce")
-        if not com_xy.dropna().empty:
-            x_span = float(com_xy["com_x"].quantile(0.95) - com_xy["com_x"].quantile(0.05))
-            y_span = float(com_xy["com_y"].quantile(0.95) - com_xy["com_y"].quantile(0.05))
-            inferred = max(cell_size * 3.0, max(x_span, y_span) * 1.25)
-            total_size = max(total_size, inferred)
+    cell_size = float(params.get("grid", {}).get("cell_size_m", 0.9))
+    total_size = float(params.get("grid", {}).get("total_size_m", 2.7))
 
     for prefix in ["com", "left_ankle", "right_ankle"]:
-        frame_df[f"{prefix}_cell"] = _locate_nine_grid_cell_series(
-            frame_df[f"{prefix}_x"],
-            frame_df[f"{prefix}_y"],
-            center_xy=center_xy,
-            cell_size=cell_size,
-            total_size=total_size,
+        frame_df[f"{prefix}_cell"] = frame_df.apply(
+            lambda r: _locate_nine_grid_cell(
+                r[f"{prefix}_x"], r[f"{prefix}_y"], center_xy, cell_size, total_size
+            ) if pd.notna(r[f"{prefix}_x"]) and pd.notna(r[f"{prefix}_y"]) else np.nan,
+            axis=1
         )
 
     # 速度 / 加速度
@@ -528,6 +436,22 @@ def build_frame_metrics(pose_df: pd.DataFrame, params: dict) -> pd.DataFrame:
         )
         frame_df[f"{prefix}_acceleration_mps2"] = _derivative(frame_df[f"{prefix}_speed_mps"], dt)
 
+    # 累计位移（相对第0帧）与水平路径距离
+    for prefix in ["com", "left_ankle", "right_ankle"]:
+        x_col = frame_df[f"{prefix}_x"]
+        y_col = frame_df[f"{prefix}_y"]
+        x0 = x_col.dropna().iloc[0] if not x_col.dropna().empty else 0.0
+        y0 = y_col.dropna().iloc[0] if not y_col.dropna().empty else 0.0
+        frame_df[f"{prefix}_disp_x_m"] = frame_df[f"{prefix}_x"] - x0
+        frame_df[f"{prefix}_disp_y_m"] = frame_df[f"{prefix}_y"] - y0
+        frame_df[f"{prefix}_disp_xy_m"] = np.sqrt(
+            frame_df[f"{prefix}_disp_x_m"] ** 2 + frame_df[f"{prefix}_disp_y_m"] ** 2
+        )
+        # 水平路径累计距离（不抵消往返）
+        dx = frame_df[f"{prefix}_x"].diff().fillna(0)
+        dy = frame_df[f"{prefix}_y"].diff().fillna(0)
+        frame_df[f"{prefix}_horizontal_path_m"] = np.sqrt(dx ** 2 + dy ** 2).cumsum()
+
     # 关节角
     left_hip_angles = []
     right_hip_angles = []
@@ -537,6 +461,7 @@ def build_frame_metrics(pose_df: pd.DataFrame, params: dict) -> pd.DataFrame:
     right_ankle_geom = []
     left_ankle_sag = []
     right_ankle_sag = []
+    com_ankle_angles = []
 
     for _, row in frame_df.iterrows():
         ls = np.array([row.get("left_shoulder_x"), row.get("left_shoulder_y"), row.get("left_shoulder_z")], dtype=float)
@@ -568,6 +493,8 @@ def build_frame_metrics(pose_df: pd.DataFrame, params: dict) -> pd.DataFrame:
             row.get("right_ankle_y"), row.get("right_ankle_z"),
             row.get("right_foot_index_y"), row.get("right_foot_index_z"),
         ))
+        com = np.array([row.get("com_x"), row.get("com_y"), row.get("com_z")], dtype=float)
+        com_ankle_angles.append(_vector_angle_deg(la - com, ra - com))
 
     frame_df["left_hip_angle_deg"] = pd.to_numeric(pd.Series(left_hip_angles), errors="coerce")
     frame_df["right_hip_angle_deg"] = pd.to_numeric(pd.Series(right_hip_angles), errors="coerce")
@@ -577,12 +504,14 @@ def build_frame_metrics(pose_df: pd.DataFrame, params: dict) -> pd.DataFrame:
     frame_df["right_ankle_angle_deg"] = pd.to_numeric(pd.Series(right_ankle_geom), errors="coerce")
     frame_df["left_ankle_sagittal_angle_deg"] = pd.to_numeric(pd.Series(left_ankle_sag), errors="coerce")
     frame_df["right_ankle_sagittal_angle_deg"] = pd.to_numeric(pd.Series(right_ankle_sag), errors="coerce")
+    frame_df["com_ankle_angle_deg"] = pd.to_numeric(pd.Series(com_ankle_angles), errors="coerce")
 
     for angle_col in [
         "left_hip_angle_deg", "right_hip_angle_deg",
         "left_knee_angle_deg", "right_knee_angle_deg",
         "left_ankle_angle_deg", "right_ankle_angle_deg",
         "left_ankle_sagittal_angle_deg", "right_ankle_sagittal_angle_deg",
+        "com_ankle_angle_deg",
     ]:
         vel_col = angle_col.replace("_angle_deg", "_angular_velocity_deg_s")
         acc_col = angle_col.replace("_angle_deg", "_angular_acceleration_deg_s2")
@@ -629,13 +558,18 @@ def build_frame_metrics(pose_df: pd.DataFrame, params: dict) -> pd.DataFrame:
     frame_df["left_support_state"] = _apply_hysteresis(frame_df["left_clearance_m"])
     frame_df["right_support_state"] = _apply_hysteresis(frame_df["right_clearance_m"])
 
-    l_air = frame_df["left_support_state"].eq("airborne")
-    r_air = frame_df["right_support_state"].eq("airborne")
-    frame_df["support_mode"] = np.select(
-        [l_air & r_air, l_air & (~r_air), (~l_air) & r_air],
-        ["double_airborne", "left_airborne", "right_airborne"],
-        default="double_support",
-    )
+    def _support_mode(row):
+        l = row["left_support_state"]
+        r = row["right_support_state"]
+        if l == "airborne" and r == "airborne":
+            return "double_airborne"
+        if l == "airborne" and r == "support":
+            return "left_airborne"
+        if l == "support" and r == "airborne":
+            return "right_airborne"
+        return "double_support"
+
+    frame_df["support_mode"] = frame_df.apply(_support_mode, axis=1)
 
     # 步数：落地事件
     frame_df["left_landing_event"] = (
@@ -727,7 +661,7 @@ def segment_cycles_by_rules(frame_df: pd.DataFrame, params: dict):
     df = frame_df.copy().reset_index(drop=True)
 
     for col in ["com_cell", "left_ankle_cell", "right_ankle_cell"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
     com_run = _consecutive_lengths(df["com_cell"].tolist())
     la_run = _consecutive_lengths(df["left_ankle_cell"].tolist())
@@ -852,10 +786,6 @@ def segment_cycles_by_rules(frame_df: pd.DataFrame, params: dict):
         return out
 
     cycles = []
-    segmentation_source = "none"
-    fallback_level = "none"
-    non_home_cell_frames_pre = int(df["com_cell"].ne(5).fillna(False).sum())
-    moving_signal_required = float(th.get("inhome_signal_ratio_min", 0.008))
 
     # -------- 严格规则优先 --------
     init_stop = find_home_stop_window(0)
@@ -899,7 +829,6 @@ def segment_cycles_by_rules(frame_df: pd.DataFrame, params: dict):
                 "point3_idx": int(point3_idx),
                 "point4_idx": int(point4_idx),
             })
-            segmentation_source = "strict_rules"
 
             current_launch = find_launch_from_ref(point4_stop_end + 1, point4_ref_xy)
             cycle_id += 1
@@ -911,13 +840,7 @@ def segment_cycles_by_rules(frame_df: pd.DataFrame, params: dict):
         start_idx = 0
         current_cell = cells[0] if len(cells) > 0 else np.nan
         for i in range(1, len(cells)):
-            curr_missing = bool(pd.isna(cells[i]))
-            prev_missing = bool(pd.isna(current_cell))
-            same = False
-            if curr_missing and prev_missing:
-                same = True
-            elif (not curr_missing) and (not prev_missing):
-                same = bool(cells[i] == current_cell)
+            same = (pd.isna(cells[i]) and pd.isna(current_cell)) or (cells[i] == current_cell)
             if not same:
                 if not pd.isna(current_cell):
                     segments.append((int(current_cell), start_idx, i - 1))
@@ -994,121 +917,9 @@ def segment_cycles_by_rules(frame_df: pd.DataFrame, params: dict):
                 "point3_idx": int(point3_idx),
                 "point4_idx": int(point4_idx),
             })
-            segmentation_source = "stable_segments"
             cycle_id += 1
 
-    # -------- 若仍失败，尝试“同格动作”兜底 --------
-    if not cycles:
-        step_events = pd.to_numeric(df.get("step_event_count", 0), errors="coerce").fillna(0) > 0
-        moving_bool = (
-            (df[com_speed_col] >= max(0.05, launch_com * 0.45)) |
-            (df[la_speed_col] >= max(0.08, launch_ankle * 0.45)) |
-            (df[ra_speed_col] >= max(0.08, launch_ankle * 0.45))
-        ).fillna(False)
-        moving_signal_ratio_local = float(moving_bool.mean()) if len(moving_bool) else 0.0
-        moving_runs = _extract_runs(moving_bool, max(2, launch_frames))
-        run_coverage_ratio = 0.0
-        if len(df) > 0 and moving_runs:
-            run_coverage_ratio = float(
-                sum(max(0, e - s + 1) for s, e in moving_runs) / float(len(df))
-            )
-        step_event_ratio = float(step_events.mean()) if len(step_events) else 0.0
-        moving_signal_required = max(
-            float(th.get("inhome_signal_ratio_min", 0.008)),
-            min(0.03, step_event_ratio * float(th.get("inhome_signal_step_ratio_scale", 0.6))),
-            min(0.03, run_coverage_ratio * float(th.get("inhome_signal_run_ratio_scale", 0.5))),
-        )
-        anchors = sorted(
-            set([int(i) for i in np.where(step_events.to_numpy())[0].tolist()] + [int(s) for s, _ in moving_runs])
-        )
-        min_gap = max(10, launch_frames * 3)
-        filtered = []
-        for idx in anchors:
-            if not filtered or idx - filtered[-1] >= min_gap:
-                filtered.append(idx)
-        allow_weak_inhome = non_home_cell_frames_pre == 0 and bool(step_events.any())
-        if len(filtered) >= 2 and (
-            moving_signal_ratio_local >= moving_signal_required or allow_weak_inhome
-        ):
-            cycle_id = 1
-            fallback_level = (
-                "weak"
-                if moving_signal_ratio_local < moving_signal_required
-                else "standard"
-            )
-            for i in range(len(filtered) - 1):
-                state1_start_idx = int(filtered[i])
-                point4_idx = int(filtered[i + 1])
-                if point4_idx - state1_start_idx < max(6, launch_frames * 2):
-                    continue
-                point2_idx = min(
-                    point4_idx - 2,
-                    state1_start_idx + max(1, static_frames // 2),
-                )
-                point3_idx = min(point4_idx - 1, point2_idx + 1)
-                if point2_idx <= state1_start_idx or point4_idx <= point3_idx:
-                    continue
-                cycles.append({
-                    "cycle_id": cycle_id,
-                    "target_cell": 5,
-                    "point1_source": "fallback_inhome_signal",
-                    "point4_source": "fallback_inhome_signal",
-                    "state1_start_idx": state1_start_idx,
-                    "point1_idx": state1_start_idx,
-                    "point2_idx": int(point2_idx),
-                    "point3_idx": int(point3_idx),
-                    "point4_idx": point4_idx,
-                })
-                cycle_id += 1
-            if cycles:
-                segmentation_source = (
-                    "inhome_signal_fallback_weak"
-                    if fallback_level == "weak"
-                    else "inhome_signal_fallback"
-                )
-
-    out = _annotate_cycles(cycles)
-    non_home_cell_frames = non_home_cell_frames_pre
-    analysis_active_ratio = float(pd.to_numeric(out["analysis_active"], errors="coerce").fillna(0).mean()) if len(out) else 0.0
-    moving_signal_ratio = float(moving_bool.mean()) if "moving_bool" in locals() else float(
-        (
-            (df[com_speed_col] >= max(0.05, launch_com * 0.45)) |
-            (df[la_speed_col] >= max(0.08, launch_ankle * 0.45)) |
-            (df[ra_speed_col] >= max(0.08, launch_ankle * 0.45))
-        ).fillna(False).mean()
-    )
-    cycle_count = int(len(cycles))
-    segmentation_status = "ok" if cycle_count > 0 else "failed"
-    segmentation_reason = ""
-    if segmentation_status == "failed":
-        if non_home_cell_frames == 0:
-            segmentation_reason = "all_frames_home_cell"
-        elif moving_signal_ratio < moving_signal_required:
-            segmentation_reason = "insufficient_motion_signal"
-        else:
-            segmentation_reason = "rules_not_matched"
-    if segmentation_status == "failed":
-        segmentation_confidence = "none"
-    elif segmentation_source == "strict_rules":
-        segmentation_confidence = "high"
-    elif fallback_level == "weak":
-        segmentation_confidence = "low"
-    else:
-        segmentation_confidence = "medium"
-
-    diagnostics = {
-        "segmentation_status": segmentation_status,
-        "segmentation_reason": segmentation_reason,
-        "segmentation_source": segmentation_source,
-        "segmentation_confidence": segmentation_confidence,
-        "fallback_level": fallback_level,
-        "cycle_count": cycle_count,
-        "non_home_cell_frames": non_home_cell_frames,
-        "analysis_active_ratio": analysis_active_ratio,
-        "moving_signal_ratio": moving_signal_ratio,
-        "moving_signal_required_ratio": moving_signal_required,
-    }
-    return out, cycles, diagnostics
+    return _annotate_cycles(cycles), cycles
 
 
 # -----------------------------
@@ -1511,9 +1322,7 @@ def _plot_single_series(df: pd.DataFrame, x_col: str, y_col: str, title: str, ou
     plt.ylabel(y_label)
     plt.title(title)
     plt.grid(alpha=0.25)
-    handles, labels = plt.gca().get_legend_handles_labels()
-    if labels:
-        plt.legend()
+    plt.legend()
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
@@ -1547,9 +1356,7 @@ def _plot_line(df: pd.DataFrame, x_col: str, y_cols: List[str], title: str, out_
     plt.ylabel(y_label)
     plt.title(title)
     plt.grid(alpha=0.25)
-    handles, labels = plt.gca().get_legend_handles_labels()
-    if labels:
-        plt.legend()
+    plt.legend()
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
@@ -1595,6 +1402,7 @@ def export_all_outputs(
     airborne_dir = output_dir / "腾空参数"
     joint_dir = output_dir / "关节参数"
     overall_dir = output_dir / "总体参数"
+    disp_dir = output_dir / "位移参数"
     eval_dir = output_dir / "评价参数"
 
     # 速度
@@ -1628,12 +1436,14 @@ def export_all_outputs(
         "left_hip_angle_deg", "right_hip_angle_deg",
         "left_knee_angle_deg", "right_knee_angle_deg",
         "left_ankle_sagittal_angle_deg", "right_ankle_sagittal_angle_deg",
+        "com_ankle_angle_deg",
         "left_hip_angular_velocity_deg_s", "right_hip_angular_velocity_deg_s",
         "left_knee_angular_velocity_deg_s", "right_knee_angular_velocity_deg_s",
         "left_ankle_sagittal_angular_velocity_deg_s", "right_ankle_sagittal_angular_velocity_deg_s",
         "left_hip_angular_acceleration_deg_s2", "right_hip_angular_acceleration_deg_s2",
         "left_knee_angular_acceleration_deg_s2", "right_knee_angular_acceleration_deg_s2",
         "left_ankle_sagittal_angular_acceleration_deg_s2", "right_ankle_sagittal_angular_acceleration_deg_s2",
+        "com_ankle_angular_velocity_deg_s", "com_ankle_angular_acceleration_deg_s2",
     ]
     _save_table(frame_df[[c for c in joint_frame_cols if c in frame_df.columns]], joint_dir / "01_逐帧关节参数表.xlsx")
     _save_table(joint_summary_df, joint_dir / "02_状态关节汇总表.xlsx")
@@ -1641,56 +1451,92 @@ def export_all_outputs(
     # 总体
     _save_table(overall_summary_df, overall_dir / "01_总体参数表.xlsx")
 
-    # 评价
-    eval_frame_cols = [
+    # 位移
+    disp_frame_cols = [
         "frame_id", "time_s", "cycle_id", "target_cell", "movement_state",
-        "left_hip_torque_nm", "right_hip_torque_nm", "left_knee_torque_nm", "right_knee_torque_nm",
-        "left_hip_power_w", "right_hip_power_w", "left_knee_power_w", "right_knee_power_w",
-        "support_mode",
+        "com_disp_x_m", "com_disp_y_m", "com_disp_xy_m", "com_horizontal_path_m",
+        "left_ankle_disp_x_m", "left_ankle_disp_y_m", "left_ankle_disp_xy_m", "left_ankle_horizontal_path_m",
+        "right_ankle_disp_x_m", "right_ankle_disp_y_m", "right_ankle_disp_xy_m", "right_ankle_horizontal_path_m",
     ]
-    _save_table(frame_df[[c for c in eval_frame_cols if c in frame_df.columns]], eval_dir / "01_逐帧评价参数表.xlsx")
-    _save_table(evaluation_summary_df, eval_dir / "02_评价参数表.xlsx")
-    _save_table(torque_summary_df, eval_dir / "03_关节力矩汇总表.xlsx")
-    _save_table(symmetry_detail_df, eval_dir / "04_步伐对称性明细表.xlsx")
+    _save_table(frame_df[[c for c in disp_frame_cols if c in frame_df.columns]], disp_dir / "01_逐帧位移参数表.xlsx")
+
+    # 评价
+    if not params.get("skip_evaluation", False):
+        eval_frame_cols = [
+            "frame_id", "time_s", "cycle_id", "target_cell", "movement_state",
+            "left_hip_torque_nm", "right_hip_torque_nm", "left_knee_torque_nm", "right_knee_torque_nm",
+            "left_hip_power_w", "right_hip_power_w", "left_knee_power_w", "right_knee_power_w",
+            "support_mode",
+        ]
+        _save_table(frame_df[[c for c in eval_frame_cols if c in frame_df.columns]], eval_dir / "01_逐帧评价参数表.xlsx")
+        _save_table(evaluation_summary_df, eval_dir / "02_评价参数表.xlsx")
+        _save_table(torque_summary_df, eval_dir / "03_关节力矩汇总表.xlsx")
+        _save_table(symmetry_detail_df, eval_dir / "04_步伐对称性明细表.xlsx")
 
     # 绘图
     if params.get("plots", {}).get("enabled", True):
-        _plot_line(frame_df, "time_s",
+        _plot_line(frame_df, "frame_id",
                    ["com_speed_mps", "left_ankle_speed_mps", "right_ankle_speed_mps"],
                    "速度变化曲线", speed_dir / "图片" / "速度变化曲线.png",
-                   x_label="时间（s）", y_label="速度（m/s）")
-        _plot_line(frame_df, "time_s",
+                   x_label="帧", y_label="速度（m/s）")
+        _plot_line(frame_df, "frame_id",
                    ["com_acceleration_mps2", "left_ankle_acceleration_mps2", "right_ankle_acceleration_mps2"],
                    "加速度变化曲线", speed_dir / "图片" / "加速度变化曲线.png",
-                   x_label="时间（s）", y_label="加速度（m/s²）")
+                   x_label="帧", y_label="加速度（m/s²）")
+        _plot_line(frame_df, "frame_id",
+                   ["com_horizontal_speed_mps"],
+                   "重心水平速度变化曲线", speed_dir / "图片" / "重心水平速度变化曲线.png",
+                   x_label="帧", y_label="水平速度（m/s）",
+                   include_split=False, include_sum=False)
+        _plot_line(frame_df, "frame_id",
+                   ["left_ankle_horizontal_speed_mps", "right_ankle_horizontal_speed_mps"],
+                   "左右脚水平速度变化曲线", speed_dir / "图片" / "左右脚水平速度变化曲线.png",
+                   x_label="帧", y_label="水平速度（m/s）")
 
-        _plot_line(frame_df, "time_s",
+        _plot_line(frame_df, "frame_id",
                    ["left_clearance_m", "right_clearance_m"],
                    "足部离地高度曲线", airborne_dir / "图片" / "足部离地高度曲线.png",
-                   x_label="时间（s）", y_label="离地高度（m）")
+                   x_label="帧", y_label="离地高度（m）")
 
-        _plot_line(frame_df, "time_s",
+        _plot_line(frame_df, "frame_id",
                    ["left_hip_angle_deg", "right_hip_angle_deg", "left_knee_angle_deg", "right_knee_angle_deg"],
                    "髋膝关节角度曲线", joint_dir / "图片" / "髋膝关节角度曲线.png",
-                   x_label="时间（s）", y_label="角度（°）")
-        _plot_line(frame_df, "time_s",
+                   x_label="帧", y_label="角度（°）")
+        _plot_line(frame_df, "frame_id",
                    ["left_ankle_sagittal_angle_deg", "right_ankle_sagittal_angle_deg"],
                    "踝关节矢状面角度曲线", joint_dir / "图片" / "踝关节矢状面角度曲线.png",
-                   x_label="时间（s）", y_label="角度（°）")
-        _plot_line(frame_df, "time_s",
+                   x_label="帧", y_label="角度（°）")
+        _plot_line(frame_df, "frame_id",
+                   ["com_ankle_angle_deg"],
+                   "左右踝重心夹角曲线", joint_dir / "图片" / "左右踝重心夹角曲线.png",
+                   x_label="帧", y_label="角度（°）",
+                   include_split=False, include_sum=False)
+        _plot_line(frame_df, "frame_id",
                    ["left_knee_angular_velocity_deg_s", "right_knee_angular_velocity_deg_s",
                     "left_ankle_sagittal_angular_velocity_deg_s", "right_ankle_sagittal_angular_velocity_deg_s"],
                    "关节角速度曲线", joint_dir / "图片" / "关节角速度曲线.png",
-                   x_label="时间（s）", y_label="角速度（°/s）")
+                   x_label="帧", y_label="角速度（°/s）")
 
-        _plot_line(frame_df, "time_s",
-                   ["left_hip_torque_nm", "right_hip_torque_nm", "left_knee_torque_nm", "right_knee_torque_nm"],
-                   "关节力矩曲线", eval_dir / "图片" / "关节力矩曲线.png",
-                   x_label="时间（s）", y_label="力矩（N·m）")
-        _plot_line(frame_df, "time_s",
-                   ["left_hip_power_w", "right_hip_power_w", "left_knee_power_w", "right_knee_power_w"],
-                   "关节功率曲线", eval_dir / "图片" / "关节功率曲线.png",
-                   x_label="时间（s）", y_label="功率（W）")
+        # 位移参数图
+        _plot_line(frame_df, "frame_id",
+                   ["com_disp_x_m", "com_disp_y_m", "com_disp_xy_m"],
+                   "水平位移曲线", disp_dir / "图片" / "水平位移曲线.png",
+                   x_label="帧", y_label="位移（m）")
+        _plot_line(frame_df, "frame_id",
+                   ["com_horizontal_path_m"],
+                   "水平路径累计距离曲线", disp_dir / "图片" / "水平路径累计距离曲线.png",
+                   x_label="帧", y_label="累计距离（m）",
+                   include_split=False, include_sum=False)
+
+        if not params.get("skip_evaluation", False):
+            _plot_line(frame_df, "frame_id",
+                       ["left_hip_torque_nm", "right_hip_torque_nm", "left_knee_torque_nm", "right_knee_torque_nm"],
+                       "关节力矩曲线", eval_dir / "图片" / "关节力矩曲线.png",
+                       x_label="帧", y_label="力矩（N·m）")
+            _plot_line(frame_df, "frame_id",
+                       ["left_hip_power_w", "right_hip_power_w", "left_knee_power_w", "right_knee_power_w"],
+                       "关节功率曲线", eval_dir / "图片" / "关节功率曲线.png",
+                       x_label="帧", y_label="功率（W）")
 
     manifest = {
         "速度参数": [
@@ -1709,6 +1555,9 @@ def export_all_outputs(
         ],
         "总体参数": [
             "01_总体参数表.xlsx：运动耗时、移动耗时、还原耗时、总距离、步数、平均速度",
+        ],
+        "位移参数": [
+            "01_逐帧位移参数表.xlsx：X位移、Y位移、XY平面合位移、水平路径累计距离（重心+左右脚踝）",
         ],
         "评价参数": [
             "01_逐帧评价参数表.xlsx：逐帧力矩、功率、支撑模式",

@@ -58,14 +58,7 @@ def _header_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     cycle_count = _num(quality.get("cycleCount"), 0)
     stability = max(0.0, 1.0 - min(_num(derived.get("com_speed_std_mps"), 0.4), 0.8))
 
-    score = int(max(500, min(980, round(
-        520
-        + mean_speed * 80
-        + peak_speed * 40
-        + active_ratio * 180
-        + stability * 120
-        + min(cycle_count, 12) * 6
-    ))))
+    score = int(round(_num(summary.get("score"), 0.0)))
 
     cycle_time_ms = _num(summary.get("mean_cycle_time_s"), _num(summary.get("cycle_time_mean_s"), 0.25)) * 1000
     if cycle_time_ms <= 0:

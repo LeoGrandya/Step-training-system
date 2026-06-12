@@ -30,7 +30,7 @@
               class="site-nav__dropdown-item"
               :class="{ 'site-nav__dropdown-item--active': sub.id === currentSubjectId }"
               @click="switchSubject(sub)"
-            >{{ sub.name }}</button>
+            >{{ sub.displayName || sub.name }}</button>
           </div>
         </Transition>
       </div>
@@ -57,7 +57,7 @@ const currentSubjectId = ref(getCurrentSubjectId());
 const currentSubjectName = computed(() => {
   if (!subjects.value.length) return '无受试者';
   const sub = subjects.value.find(s => s.id === currentSubjectId.value);
-  return sub ? sub.name : subjects.value[0].name;
+  return sub ? (sub.displayName || sub.name) : (subjects.value[0].displayName || subjects.value[0].name);
 });
 
 async function loadSubjects() {

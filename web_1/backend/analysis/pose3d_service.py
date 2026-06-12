@@ -1,4 +1,4 @@
-"""Generate per-job settings and run pose3d_pkg.cli.run_pipeline.main."""
+"""Adapt web analysis jobs to the bundled pose3d batch pipeline."""
 
 from __future__ import annotations
 
@@ -33,13 +33,30 @@ def default_stereo_params_path() -> Path:
     return pose3d_project_root() / "data" / "session_001" / "stereo_params.json"
 
 
-def _resolve_pair_dir(pair_out_dir: Path) -> Path:
+def _safe_job_segment(job_id: str) -> str:
+    value = str(job_id or "").strip()
+    if not value:
+        raise ValueError("job_id 不能为空")
+    if any(ch in value for ch in ('/', '\\', ':', '*', '?', '"', '<', '>', '|')):
+        raise ValueError(f"job_id 包含非法路径字符: {job_id!r}")
+    return value
+
+
+def _resolve_pair_dir(pair_out_dir: Path, pair_info: dict[str, object] | None = None) -> Path:
+    if pair_info:
+        candidate = (
+            pair_out_dir
+            / str(pair_info.get("group") or "")
+            / str(pair_info.get("person") or "")
+            / str(pair_info.get("file_stem") or "")
+        )
+        if candidate.exists():
+            return candidate
+
     preferred = pair_out_dir / "pair_001"
     if preferred.exists():
         return preferred
-    candidates = sorted(
-        p for p in pair_out_dir.glob("pair_*") if p.is_dir()
-    )
+    candidates = sorted(p.parent for p in pair_out_dir.rglob("pose3d_abs.csv") if p.is_file())
     if len(candidates) == 1:
         return candidates[0]
     if len(candidates) > 1:
@@ -49,6 +66,8 @@ def _resolve_pair_dir(pair_out_dir: Path) -> Path:
 
 def _choose_primary_abs_csv(collect_dir: Path) -> Path:
     candidates = [
+        collect_dir / "pose3d_wide_processed.csv",
+        collect_dir / "pose3d_abs_zup_ground0.csv",
         collect_dir / "pose3d_abs_filtered_zup_ground0.csv",
         collect_dir / "pose3d_abs_filtered.csv",
         collect_dir / "pose3d_abs.csv",
@@ -64,9 +83,9 @@ def _choose_primary_abs_csv(collect_dir: Path) -> Path:
 def write_user_params_py(
     *,
     dest_py: Path,
-    session_dir: Path,
-    stereo_params_json: Path,
-    output_dir: Path,
+    data_root: Path,
+    output_root: Path,
+    groups: list[str],
     log_fn: Callable[[str], None],
     detector_max_frames: int | None = None,
     frame_stride: int = 1,
@@ -74,9 +93,9 @@ def write_user_params_py(
     temporal_filter_window_size: int = 5,
 ) -> None:
     settings = build_user_settings(
-        session_dir=session_dir,
-        stereo_params_json=stereo_params_json,
-        output_dir=output_dir,
+        data_root=data_root,
+        output_root=output_root,
+        groups=groups,
         detector_max_frames=detector_max_frames,
         frame_stride=frame_stride,
         temporal_filter_enabled=temporal_filter_enabled,
@@ -88,9 +107,8 @@ def write_user_params_py(
 from pathlib import Path
 
 PROJECT_ROOT = Path(r"{pose_root.as_posix()}")
-SESSION_DIR = Path(r"{session_dir.as_posix()}")
-OUTPUT_DIR = Path(r"{output_dir.as_posix()}")
-STEREO_JSON = Path(r"{stereo_params_json.as_posix()}")
+DATA_ROOT = Path(r"{data_root.as_posix()}")
+OUTPUT_ROOT = Path(r"{output_root.as_posix()}")
 
 SETTINGS = {settings!r}
 '''
@@ -100,9 +118,9 @@ SETTINGS = {settings!r}
 
 def build_user_settings(
     *,
-    session_dir: Path,
-    stereo_params_json: Path,
-    output_dir: Path,
+    data_root: Path,
+    output_root: Path,
+    groups: list[str],
     detector_max_frames: int | None = None,
     frame_stride: int = 1,
     temporal_filter_enabled: bool = True,
@@ -112,18 +130,19 @@ def build_user_settings(
     model_path = pose_root / "models" / "pose_landmarker_full.task"
     if not model_path.exists():
         raise FileNotFoundError(f"未找到 MediaPipe 模型: {model_path}")
+    stride = max(1, int(frame_stride))
     return {
         "input": {
-            "session_dir": str(session_dir),
-            "left_prefix": "left",
-            "right_prefix": "right",
+            "data_root": str(data_root),
+            "output_root": str(output_root),
+            "groups": list(groups),
             "allowed_extensions": [".mp4", ".avi", ".mov", ".mkv"],
-            "process_pair_indices": [1],
         },
         "detector": {
             "method": "mediapipe",
+            "person_selection": "highest_conf",
             "max_frames": detector_max_frames,
-            "frame_stride": max(1, int(frame_stride)),
+            "frame_stride": stride,
             "show_pose2d": False,
             "mediapipe": {
                 "model_path": str(model_path),
@@ -147,9 +166,23 @@ def build_user_settings(
             "save_right": False,
             "save_stereo": False,
         },
-        "stereo": {
-            "stereo_mode": "json",
-            "stereo_params_json": str(stereo_params_json),
+        "stereo": {"stereo_mode": "json"},
+        "ground_control": {
+            "frame_index": 0,
+            "distance_m": 2.7,
+            "width_m": 2.7,
+            "height_m": 2.7,
+            "manual_annotation": {
+                "reuse_saved_points": True,
+                "force_repick": False,
+                "use_saved_as_initial_when_repick": True,
+                "save_points_json": True,
+                "display_scale": 1.0,
+                "click_radius_px": 30,
+                "show_help": True,
+                "window_name_prefix": "ground_control_manual",
+            },
+            "debug": {"save_debug_images": False},
         },
         "pose3d": {
             "reconstruction_mode": "stereo_triangulation",
@@ -162,11 +195,6 @@ def build_user_settings(
             "root_joint_id": None,
             "root_joint_name": "body_com",
         },
-        "temporal_filter": {
-            "enabled": bool(temporal_filter_enabled),
-            "method": "median_then_mean",
-            "window_size": max(1, int(temporal_filter_window_size)),
-        },
         "ground_alignment": {
             "enabled": True,
             "joint_names": [
@@ -177,22 +205,17 @@ def build_user_settings(
                 "left_foot_index",
                 "right_foot_index",
             ],
-            "statistic": "median",
+            "statistic": "mean",
             "target_z": 0.0,
-            "save_extra_abs_ground_aligned_csv": True,
-            "extra_abs_ground_aligned_filename": "pose3d_abs_filtered_zup_ground0.csv",
         },
         "outputs": {
-            "output_dir": str(output_dir),
             "save_camera_pose_summary_json": True,
-            "save_pose2d_csv": True,
+            "save_pose2d_csv": False,
             "save_pose2d_vis_video": False,
             "save_pose3d_abs_csv": True,
-            "save_pose3d_relative_csv": True,
-            "save_pose3d_abs_filtered_csv": True,
-            "save_pose3d_relative_filtered_csv": True,
-            "save_pose3d_animation": False,
-            "animation_source": "relative",
+            "save_pose3d_relative_csv": False,
+            "save_pose3d_abs_ground_aligned_csv": True,
+            "save_pose3d_wide_csv": True,
         },
         "paraview_export": {
             "enabled": False,
@@ -202,7 +225,35 @@ def build_user_settings(
             "run_build_projection": True,
             "run_pose2d": True,
             "run_pose3d": True,
-            "run_pose3d_animation": False,
+        },
+        "postprocess": {
+            "fps": 100.0,
+            "coordinate_columns": "auto",
+            "final_output_name": "pose3d_wide_processed.csv",
+            "outlier": {
+                "enabled": bool(temporal_filter_enabled),
+                "window_size": max(3, int(temporal_filter_window_size) | 1),
+                "mad_k": 3.5,
+                "use_scaled_mad": True,
+                "min_mad": 1e-6,
+                "replace_with_nan": True,
+                "skip_columns": [],
+            },
+            "interpolation": {
+                "enabled": bool(temporal_filter_enabled),
+                "method": "pchip",
+                "max_gap_frames": 25,
+                "min_valid_points": 4,
+                "inside_only": True,
+            },
+            "filter": {
+                "enabled": bool(temporal_filter_enabled),
+                "method": "butterworth",
+                "butterworth_order": 4,
+                "cutoff_hz": 6.0,
+                "savgol_window": max(3, int(temporal_filter_window_size) | 1),
+                "savgol_polyorder": 3,
+            },
         },
     }
 
@@ -248,48 +299,70 @@ def run_pose3d_pipeline_simple(
         run_settings = dict(run_settings)
         run_settings["_runtime"] = runtime
 
+    pair_info = dict(run_settings.get("_web_pair_info") or {}) if isinstance(run_settings, dict) else {}
     pair_timings = run_pipeline_main(settings=run_settings) or {}
 
-    pair_dir = _resolve_pair_dir(pair_out_dir)
+    pair_dir = _resolve_pair_dir(pair_out_dir, pair_info=pair_info)
     log_fn(f"读取 pair 输出目录: {pair_dir}")
     abs_csv = pair_dir / "pose3d_abs.csv"
-    filt_csv = pair_dir / "pose3d_abs_filtered.csv"
-    ground0_csv = pair_dir / "pose3d_abs_filtered_zup_ground0.csv"
+    ground0_csv = pair_dir / "pose3d_abs_zup_ground0.csv"
+    wide_csv = pair_dir / "pose3d_wide.csv"
+    processed_csv = pair_dir / "pose3d_wide_processed.csv"
     if not abs_csv.exists():
         raise FileNotFoundError(f"未生成 pose3d_abs.csv: {abs_csv}")
 
     collect_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(abs_csv, collect_dir / "pose3d_abs.csv")
-    if filt_csv.exists():
-        shutil.copy2(filt_csv, collect_dir / "pose3d_abs_filtered.csv")
-    else:
-        shutil.copy2(abs_csv, collect_dir / "pose3d_abs_filtered.csv")
     if ground0_csv.exists():
-        shutil.copy2(ground0_csv, collect_dir / "pose3d_abs_filtered_zup_ground0.csv")
+        shutil.copy2(ground0_csv, collect_dir / "pose3d_abs_zup_ground0.csv")
+    if wide_csv.exists():
+        shutil.copy2(wide_csv, collect_dir / "pose3d_wide.csv")
+    if processed_csv.exists():
+        shutil.copy2(processed_csv, collect_dir / "pose3d_wide_processed.csv")
 
     primary = _choose_primary_abs_csv(collect_dir)
 
     log_fn(f"3D 输出: {primary}")
     pair_metrics: dict[str, object] = {}
     if isinstance(pair_timings, dict):
-        pair_metrics = dict(pair_timings.get("pair_001") or {})
+        pair_name = str(pair_info.get("pair_name") or "")
+        pair_metrics = dict(pair_timings.get(pair_name) or {})
     return primary, _choose_primary_abs_csv(collect_dir), pair_metrics
 
 
-def prepare_session_videos(
+def prepare_batch_job_videos(
     *,
+    job_id: str,
     synced_left: Path,
     synced_right: Path,
-    session_dir: Path,
+    data_root: Path,
     stereo_src: Path,
     log_fn: Callable[[str], None],
-) -> Path:
-    session_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(synced_left, session_dir / "left1.mp4")
-    shutil.copy2(synced_right, session_dir / "right1.mp4")
-    dst_stereo = session_dir / "stereo_params.json"
+) -> dict[str, str]:
+    person = _safe_job_segment(job_id)
+    group = "web_jobs"
+    file_stem = "analysis"
+    group_dir = data_root / group
+    left_dir = group_dir / person / "left"
+    right_dir = group_dir / person / "right"
+    left_dir.mkdir(parents=True, exist_ok=True)
+    right_dir.mkdir(parents=True, exist_ok=True)
+    left_dst = left_dir / f"{file_stem}.mp4"
+    right_dst = right_dir / f"{file_stem}.mp4"
+    shutil.copy2(synced_left, left_dst)
+    shutil.copy2(synced_right, right_dst)
+    dst_stereo = group_dir / "stereo_params.json"
     if not stereo_src.exists():
         raise FileNotFoundError(f"缺少 stereo_params.json: {stereo_src}")
     shutil.copy2(stereo_src, dst_stereo)
-    log_fn(f"已准备 session 视频与标定: {session_dir}")
-    return session_dir
+    pair = {
+        "group": group,
+        "person": person,
+        "file_stem": file_stem,
+        "pair_name": f"{group}_{person}_{file_stem}",
+        "left_video": str(left_dst),
+        "right_video": str(right_dst),
+        "stereo_params_json": str(dst_stereo),
+    }
+    log_fn(f"已准备新版 pose3d 批处理输入: {group_dir / person}")
+    return pair

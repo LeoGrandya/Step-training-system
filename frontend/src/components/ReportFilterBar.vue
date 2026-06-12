@@ -5,7 +5,7 @@
       <div class="rfb__group">
         <label class="rfb__lbl">受试者</label>
         <select :value="userId" @change="onUserChange" class="rfb__sel">
-          <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name || u.id }}</option>
+          <option v-for="u in users" :key="u.id" :value="u.id">{{ u.displayName || u.name || u.id }}</option>
         </select>
       </div>
       <button v-if="userProfile" type="button" class="rfb__prof-btn" :class="{ 'rfb__prof-btn--open': profileOpen }" @click="profileOpen = !profileOpen">档案 {{ profileOpen ? '▾' : '▸' }}</button>
@@ -55,8 +55,8 @@ const props = defineProps({
 const emit = defineEmits(['update:userId', 'update:filters', 'reset'])
 const profileOpen = ref(false)
 let searchTimer = null
-const handMap = { right: '右手', left: '左手' }
-const levelMap = { 'level-2': '二级', 'level-1': '一级', amateur: '业余' }
+const handMap = { '右手': '右手', '左手': '左手' }
+const levelMap = { '二级': '二级', '一级': '一级', '业余': '业余' }
 function handLabel(h) { return handMap[h] || h || '-' }
 function levelLabel(l) { return levelMap[l] || l || '-' }
 function onUserChange(e) { profileOpen.value = false; emit('update:userId', e.target.value) }

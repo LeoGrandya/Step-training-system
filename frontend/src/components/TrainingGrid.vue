@@ -85,7 +85,7 @@
           {{ cell }}
         </div>
       </div>
-      <RouterLink v-if="mode !== 'free'" class="muted-link" to="/analysis">训练结束后上传左右机位视频进行分析</RouterLink>
+      <RouterLink v-if="mode !== '自由练习'" class="muted-link" to="/analysis">训练结束后上传左右机位视频进行分析</RouterLink>
       <p v-else class="hint">自由练习模式默认不进入视频分析，可重新选择“练习评估”或“能力测试”。</p>
     </main>
 
@@ -145,7 +145,7 @@ import {
 } from '../services/presetSteps.js';
 
 const props = defineProps({
-  mode: { type: String, default: 'eval' },
+  mode: { type: String, default: '练习评估' },
   profile: { type: Object, required: true },
   locked: { type: Boolean, default: false },
 });
@@ -192,7 +192,9 @@ let currentIndex = 0;
 let prefsHydrated = false;
 let savePrefsTimer = null;
 
-const profileHand = computed(() => props.profile.hand === 'left' ? 'left' : 'right');
+const profileHand = computed(() => (
+  props.profile.hand === 'left' || props.profile.hand === '左手' ? 'left' : 'right'
+));
 const isFullTablePreset = computed(() => (
   stepSource.value === 'preset' && stepType.value === 'full-table'
 ));
@@ -210,7 +212,7 @@ const sequencePreview = computed(() => {
 watch(
   () => [props.mode, props.profile.level],
   () => {
-    if (props.mode === 'test') {
+    if (props.mode === '能力测试') {
       stepSource.value = 'preset';
       stepType.value = resolveDefaultStepType();
     }
@@ -387,8 +389,8 @@ async function callHardwareStart() {
 }
 
 function resolveDefaultStepType() {
-  if (props.mode !== 'test') return 'single-step';
-  const byLevel = { 'level-1': 'four-point', 'level-2': 'three-point', amateur: 'two-point' };
+  if (props.mode !== '能力测试') return 'single-step';
+  const byLevel = { 'level-1': 'four-point', 'level-2': 'three-point', amateur: 'two-point', '一级': 'four-point', '二级': 'three-point', '业余': 'two-point' };
   return byLevel[props.profile.level] || 'three-point';
 }
 
@@ -521,7 +523,7 @@ function stop(message = '已停止，可重新开始。') {
 
 onMounted(async () => {
   applyTrainingPrefs(loadTrainingPrefs());
-  if (props.mode === 'test') {
+  if (props.mode === '能力测试') {
     stepSource.value = 'preset';
     stepType.value = resolveDefaultStepType();
   }

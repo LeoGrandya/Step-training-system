@@ -2,14 +2,14 @@
 <template>
   <section class="analysis-page" :class="{ 'analysis-page--active': job.phase.value !== 'idle' }">
     <!-- 页头 -->
-    <header class="analysis-hd">
+    <header class="analysis-hd analysis-header">
       <div>
         <p class="analysis-hd__eyebrow">Step Training</p>
         <h1 class="analysis-hd__title">双目视频分析</h1>
       </div>
-      <div class="analysis-hd__rhs">
-        <span v-if="currentUserName" class="analysis-hd__user">当前用户：{{ currentUserName }}</span>
-        <RouterLink to="/report-history" class="analysis-hd__history">历史报告 &rarr;</RouterLink>
+      <div class="analysis-hd__rhs analysis-header__meta">
+        <span v-if="currentUserName" class="analysis-hd__user analysis-header__user">当前用户：{{ currentUserName }}</span>
+        <RouterLink to="/report-history" class="analysis-hd__history analysis-header__history-link">历史报告 &rarr;</RouterLink>
       </div>
     </header>
 
@@ -21,7 +21,7 @@
       <!-- 左侧：上传 + 进度 + 操作 -->
       <main class="analysis-main">
         <!-- 双机位上传网格 -->
-        <div class="analysis-stereo-grid">
+        <div class="analysis-stereo-grid analysis-upload-grid">
           <div class="analysis-stereo-cell">
             <AnalysisUploadZone v-model="leftFile" camera="left" accept="video/*" />
           </div>
@@ -34,8 +34,8 @@
         </div>
 
         <!-- 标定文件标签 -->
-        <div class="analysis-calib">
-          <span class="analysis-calib__label">标定文件</span>
+        <div class="analysis-calib analysis-calibration-field">
+          <span class="analysis-calib__label analysis-calibration__label">标定文件</span>
           <div class="analysis-calib__ctrl" :class="{ 'analysis-calib__ctrl--has': stereoFile, 'analysis-calib__ctrl--over': stereoDragOver }"
             @dragover.prevent="stereoDragOver = true"
             @dragleave.prevent="stereoDragOver = false"
@@ -62,20 +62,20 @@
         />
 
         <!-- 操作按钮 -->
-        <div v-if="job.phase.value === 'done'" class="analysis-action">
+        <div v-if="job.phase.value === 'done'" class="analysis-action analysis-submit-row">
           <button class="analysis-action__btn analysis-action__btn--outline" @click="goToReport">查看分析报告</button>
         </div>
 
-        <div v-if="job.phase.value === 'idle'" class="analysis-action">
-          <button class="analysis-action__btn analysis-action__btn--primary"
+        <div v-if="job.phase.value === 'idle'" class="analysis-action analysis-submit-row">
+          <button class="analysis-action__btn analysis-action__btn--primary analysis-submit-button"
             :disabled="!canSubmit || upload.submitting.value"
             @click="handleStart">
             {{ upload.submitting.value ? '提交中...' : '开始分析' }}
           </button>
-          <p v-if="upload.submitError.value" class="analysis-action__err">{{ upload.submitError.value }}</p>
+          <p v-if="upload.submitError.value" class="analysis-action__err analysis-submit-error">{{ upload.submitError.value }}</p>
         </div>
 
-        <div v-if="job.phase.value === 'error'" class="analysis-action">
+        <div v-if="job.phase.value === 'error'" class="analysis-action analysis-submit-row">
           <p class="analysis-action__err">分析失败：{{ job.statusText.value }}</p>
           <button class="analysis-action__btn analysis-action__btn--outline" @click="job.reset()">重新开始</button>
         </div>
@@ -86,7 +86,11 @@
         <div class="analysis-side-card">
           <AnalysisParamsPanel
             :stepDisplayName="stepDisplayName"
+            :trainingConfigId="trainingConfigId"
+            :analysisProfile="analysisProfile"
+            :trainingMode="trainingMode"
             @update:stepDisplayName="stepDisplayName = $event"
+            @update:trainingConfigId="trainingConfigId = $event"
           />
         </div>
         <div class="analysis-side-card">
@@ -122,6 +126,9 @@ const stereoFile = ref(null)
 const stereoDragOver = ref(false)
 const stereoInput = ref(null)
 const stepDisplayName = ref('')
+const trainingConfigId = ref('')
+const analysisProfile = ref('快速')
+const trainingMode = ref(getTrainingMode() || '练习评估')
 const currentUserName = ref('')
 const pageError = ref('')
 const analysisGeneration = ref(0)
@@ -161,15 +168,17 @@ async function handleStart() {
 
   const gen = ++analysisGeneration.value
 
-  saveTrainingMode(getTrainingMode() || 'eval')
+  trainingMode.value = getTrainingMode() || trainingMode.value || '练习评估'
+  saveTrainingMode(trainingMode.value)
 
   setSubmittingGuard()
   enableLeaveGuard()
 
   try {
     const payload = await upload.submit(leftFile.value, rightFile.value, stereoFile.value, {
-      trainingMode: getTrainingMode() || 'eval',
-      analysisProfile: 'fast',
+      trainingMode: trainingMode.value,
+      analysisProfile: analysisProfile.value,
+      trainingConfigId: trainingConfigId.value,
       stepDisplayName: stepDisplayName.value,
       userId: getCurrentSubjectId() || getCurrentUserId(),
       fps: 60,
@@ -220,6 +229,17 @@ function clearStereo() {
   if (stereoInput.value) stereoInput.value.value = ''
 }
 
+function fetchUserName() {
+  try {
+    const raw = window.sessionStorage.getItem('pp-current-user')
+    if (!raw) return
+    const user = JSON.parse(raw)
+    currentUserName.value = user?.name || user?.displayName || ''
+  } catch {
+    currentUserName.value = ''
+  }
+}
+
 onMounted(async () => {
   document.documentElement.dataset.pageReady = 'analysis'
   fetchUserName()
@@ -243,7 +263,8 @@ function onSubjectChanged(e) {
   leftFile.value = null
   rightFile.value = null
   stereoFile.value = null
-  saveTrainingMode(getTrainingMode() || 'eval')
+  trainingMode.value = getTrainingMode() || trainingMode.value || '练习评估'
+  saveTrainingMode(trainingMode.value)
 }
 
 onUnmounted(() => {

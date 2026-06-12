@@ -79,8 +79,31 @@ def json_ok(status: int = 200, **fields: Any):
     return jsonify(ok_payload(**fields)), status
 
 
+# 英文错误码 → 中文消息映射（仓库层抛出的 ValueError 已为中文，此处处理 API 层直接 json_err 的英文码）
+_ERROR_CN: dict[str, str] = {
+    "invalid_json": "无效的 JSON 格式",
+    "not_found": "记录不存在",
+    "permission_denied": "无操作权限",
+    "invalid_reference": "关联数据不存在",
+    "in_use": "被其他记录引用，无法删除",
+    "subject_not_found": "受试者不存在",
+    "account_required": "请填写账号",
+    "username_required": "请填写用户名",
+    "password_too_short": "密码长度不足",
+    "duplicate_account": "账号已存在",
+    "account_and_password_required": "请填写账号和密码",
+    "invalid_credentials": "账号或密码错误",
+    "not_authenticated": "请先登录",
+    "invalid_old_password": "旧密码错误",
+    "rbac_not_configured": "RBAC 未配置",
+    "invalid_name_format": "姓名格式无效（需 1-50 个字符，可含中英文、数字、空格及 ._-'）",
+    "invalid_camera": "无效的相机参数（仅支持 left/right）",
+    "video_file_missing": "视频文件不存在或已被清理",
+}
+
+
 def json_err(error: str, status: int = 400, **fields: Any):
-    return jsonify(err_payload(error, **fields)), status
+    return jsonify(err_payload(_ERROR_CN.get(error, error), **fields)), status
 
 
 def list_response(

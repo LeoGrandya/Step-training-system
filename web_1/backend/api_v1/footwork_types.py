@@ -24,9 +24,11 @@ def register(bp: Blueprint) -> None:
     @bp.get("/footwork-types")
     def list_footwork_types():
         page = parse_pagination(request.args, default_limit=50)
+        category = (request.args.get("category") or "").strip() or None
         items, total = repo.list_footwork_types_page(
             keyword=page.keyword,
             is_active=page.is_active,
+            category=category,
             limit=page.limit,
             offset=page.offset,
         )

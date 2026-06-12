@@ -4,6 +4,20 @@
     <h3 class="ap-params__title">分析参数</h3>
 
     <div class="ap-params__field">
+      <span class="ap-params__label">训练配置</span>
+      <select
+        class="ap-params__select"
+        :value="trainingConfigId"
+        @change="$emit('update:trainingConfigId', $event.target.value)"
+      >
+        <option value="">不限</option>
+        <option v-for="cfg in trainingConfigs" :key="cfg.id" :value="cfg.id">
+          {{ cfg.name || cfg.displayName || cfg.id }}
+        </option>
+      </select>
+    </div>
+
+    <div class="ap-params__field">
       <span class="ap-params__label">步伐名称</span>
       <select
         class="ap-params__select"
@@ -24,15 +38,25 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { listFootworkTypes, listCustomFootworks } from '../services/api.js'
+import { listFootworkTypes, listCustomFootworks, request } from '../services/api.js'
 
-defineProps({ stepDisplayName: { type: String, default: '' } })
-defineEmits(['update:stepDisplayName'])
+defineProps({
+  stepDisplayName: { type: String, default: '' },
+  trainingConfigId: { type: String, default: '' },
+  analysisProfile: { type: String, default: '快速' },
+  trainingMode: { type: String, default: '练习评估' },
+})
+defineEmits(['update:stepDisplayName', 'update:trainingConfigId'])
 
 const presetOptions = ref([])
 const customOptions = ref([])
+const trainingConfigs = ref([])
 
 onMounted(async () => {
+  try {
+    const payload = await request('/api/v1/training-configs?limit=100')
+    trainingConfigs.value = Array.isArray(payload.items) ? payload.items : []
+  } catch { trainingConfigs.value = [] }
   try {
     const ftPayload = await listFootworkTypes()
     presetOptions.value = (ftPayload.items || []).map(f => ({ label: `预置：${f.name}`, value: `preset:${f.code}` }))

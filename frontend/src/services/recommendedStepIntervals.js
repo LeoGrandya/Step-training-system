@@ -17,18 +17,27 @@ const LEVEL_OFFSET_MS = {
   amateur: 0,
   'level-2': -120,
   'level-1': -240,
+  '业余': 0,
+  '二级': -120,
+  '一级': -240,
 };
 
 const MODE_OFFSET_MS = {
   eval: 0,
   free: 180,
   test: -120,
+  '练习评估': 0,
+  '自由练习': 180,
+  '能力测试': -120,
 };
 
 const LEVEL_LABELS = {
   amateur: '业余',
   'level-2': '二级',
   'level-1': '一级',
+  '业余': '业余',
+  '二级': '二级',
+  '一级': '一级',
 };
 
 const MODE_LABELS = {

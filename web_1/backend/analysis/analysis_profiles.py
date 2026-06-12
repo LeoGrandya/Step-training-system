@@ -29,7 +29,7 @@ class AnalysisProfile:
 
 
 FAST = AnalysisProfile(
-    name="fast",
+    name="快速",
     sync=SyncProfile(video_mode="copy", crf="28", max_audio_seconds=45.0),
     pose3d=Pose3dProfile(
         max_frames=None,
@@ -41,7 +41,7 @@ FAST = AnalysisProfile(
 )
 
 BALANCED = AnalysisProfile(
-    name="balanced",
+    name="均衡",
     sync=SyncProfile(video_mode="reencode", crf="23", max_audio_seconds=90.0),
     pose3d=Pose3dProfile(
         max_frames=None,
@@ -53,7 +53,7 @@ BALANCED = AnalysisProfile(
 )
 
 QUALITY = AnalysisProfile(
-    name="quality",
+    name="高质量",
     sync=SyncProfile(video_mode="reencode", crf="20", max_audio_seconds=120.0),
     pose3d=Pose3dProfile(
         max_frames=None,
@@ -67,18 +67,24 @@ QUALITY = AnalysisProfile(
 DEFAULT_PROFILE = FAST
 
 
+# 英文→中文映射（向后兼容旧版输入）
+_PROFILE_EN_TO_CN = {"fast": "快速", "balanced": "均衡", "quality": "高质量"}
+
 def normalize_profile_name(raw: str | None) -> str:
-    value = str(raw or "").strip().lower()
-    if value in {"fast", "balanced", "quality"}:
+    value = str(raw or "").strip()
+    # 中文值直接返回
+    if value in {"快速", "均衡", "高质量"}:
         return value
-    return DEFAULT_PROFILE.name
+    # 英文值映射到中文（向后兼容）
+    lower = value.lower()
+    return _PROFILE_EN_TO_CN.get(lower, DEFAULT_PROFILE.name)
 
 
 def get_profile(raw: str | None) -> AnalysisProfile:
     name = normalize_profile_name(raw)
-    if name == "fast":
+    if name == "快速":
         return FAST
-    if name == "quality":
+    if name == "高质量":
         return QUALITY
     return BALANCED
 

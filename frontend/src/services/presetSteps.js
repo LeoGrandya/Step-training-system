@@ -65,6 +65,14 @@ export function getDefaultLoopCount(type) {
   return SINGLE_STEP_TYPES.has(type) ? DEFAULT_LOOP_COUNTS.single : DEFAULT_LOOP_COUNTS.combo;
 }
 
+function isLeftHand(hand) {
+  return hand === 'left' || hand === '左手';
+}
+
+function isRightHand(hand) {
+  return !isLeftHand(hand);
+}
+
 export function getPresetStartCell(_type, _hand = 'right') {
   return 5;
 }
@@ -94,7 +102,7 @@ export function getPresetStepLogicHint(type) {
 
 export function getPresetHandRequirement(type, hand = 'right') {
   if (type === 'back-step') {
-    return hand === 'left'
+    return isLeftHand(hand)
       ? '正手，左脚后撤步（左手为例）'
       : '正手，右脚后撤步（右手为例）';
   }
@@ -103,6 +111,7 @@ export function getPresetHandRequirement(type, hand = 'right') {
 
 export function generatePresetSteps(type, hand = 'right', repeat, random = Math.random) {
   const n = normalizeRepeat(repeat, getDefaultLoopCount(type));
+  const rightHand = isRightHand(hand);
 
   switch (type) {
     case 'single-step':
@@ -115,19 +124,19 @@ export function generatePresetSteps(type, hand = 'right', repeat, random = Math.
         active(5),
       ]);
     case 'two-point':
-      return repeatPattern(n, hand === 'right'
+      return repeatPattern(n, rightHand
         ? [active(4), active(6)]
         : [active(6), active(4)]);
     case 'three-point':
-      return repeatPattern(n, hand === 'right'
+      return repeatPattern(n, rightHand
         ? [6, 5, 4, 5, 6].map(active)
         : [4, 5, 6, 5, 4].map(active));
     case 'four-point':
-      return repeatPattern(n, hand === 'right'
+      return repeatPattern(n, rightHand
         ? [5, 4, 5, 6, 5].map(active)
         : [5, 6, 5, 4, 5].map(active));
     case 'push-side-pounce':
-      return repeatPattern(n, hand === 'right'
+      return repeatPattern(n, rightHand
         ? [active(5), active(4), active(6)]
         : [active(5), active(6), active(4)]);
     case 'full-table':

@@ -1,4 +1,3 @@
-﻿"""运行时必需。单元级指标聚合；custom_analysis 管线调用。"""
 from __future__ import annotations
 
 import math

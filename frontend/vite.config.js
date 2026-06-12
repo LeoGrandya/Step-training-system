@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
 import { readFileSync, existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 
@@ -33,6 +34,7 @@ export default defineConfig({
   base: '/spa/',
   plugins: [
     vue(),
+    tailwindcss(),
     {
       name: 'serve-legacy-html',
       configureServer(server) {

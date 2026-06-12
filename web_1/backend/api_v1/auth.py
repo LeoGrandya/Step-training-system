@@ -80,7 +80,7 @@ def register(bp: Blueprint) -> None:
             row = repo.create_account_record({
                 "account": account,
                 "username": username,
-                "passwordHash": _hash_password(password),
+                "passwordHash": password,
             })
         except repo.DuplicateRecordError:
             return json_err("duplicate_account", 409)

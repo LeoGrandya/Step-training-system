@@ -20,7 +20,7 @@ from .kinematics_service import run_kinematics
 from .pose3d_service import (
     build_user_settings,
     default_stereo_params_path,
-    prepare_session_videos,
+    prepare_batch_job_videos,
     run_pose3d_pipeline_simple,
     write_user_params_py,
 )
@@ -43,6 +43,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 def _choose_primary_pose3d_csv(collect_dir: Path) -> Path:
     candidates = [
+        collect_dir / "pose3d_wide_processed.csv",
+        collect_dir / "pose3d_abs_zup_ground0.csv",
         collect_dir / "pose3d_abs_filtered_zup_ground0.csv",
         collect_dir / "pose3d_abs_filtered.csv",
         collect_dir / "pose3d_abs.csv",
@@ -56,23 +58,29 @@ def _choose_primary_pose3d_csv(collect_dir: Path) -> Path:
 
 
 def _restore_optional_ground0(cache: ArtifactCache, key: str, collect_dir: Path) -> bool:
-    src = cache._stage_dir("pose3d", key) / "pose3d_abs_filtered_zup_ground0.csv"
-    if not src.exists():
-        return False
-    dst = collect_dir / "pose3d_abs_filtered_zup_ground0.csv"
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)
-    return True
+    restored = False
+    for name in ("pose3d_abs_zup_ground0.csv", "pose3d_wide.csv", "pose3d_wide_processed.csv"):
+        src = cache._stage_dir("pose3d", key) / name
+        if not src.exists():
+            continue
+        dst = collect_dir / name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        restored = True
+    return restored
 
 
 def _save_optional_ground0(cache: ArtifactCache, key: str, collect_dir: Path) -> bool:
-    src = collect_dir / "pose3d_abs_filtered_zup_ground0.csv"
-    if not src.exists():
-        return False
+    saved = False
     dst_dir = cache._stage_dir("pose3d", key)
     dst_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst_dir / "pose3d_abs_filtered_zup_ground0.csv")
-    return True
+    for name in ("pose3d_abs_zup_ground0.csv", "pose3d_wide.csv", "pose3d_wide_processed.csv"):
+        src = collect_dir / name
+        if not src.exists():
+            continue
+        shutil.copy2(src, dst_dir / name)
+        saved = True
+    return saved
 
 
 def _fail(store: jobs.JobStore, job_id: str, code: str, msg: str, root: Path) -> None:
@@ -170,7 +178,7 @@ def _unlink_if_exists(path: Path, log: Callable[[str], None]) -> None:
 
 
 def _cleanup_job_artifacts(store: jobs.JobStore, job_id: str, log: Callable[[str], None]) -> None:
-    keep_input = _env_flag("ANALYSIS_KEEP_INPUT_VIDEOS", default=False)
+    keep_input = _env_flag("ANALYSIS_KEEP_INPUT_VIDEOS", default=True)
     keep_synced = _env_flag("ANALYSIS_KEEP_SYNC_VIDEOS", default=False)
     keep_intermediates = _env_flag("ANALYSIS_KEEP_INTERMEDIATES", default=False)
 
@@ -286,7 +294,7 @@ def run_job_pipeline(
             _fail(store, job_id, "UPLOAD_MISSING", "需要同时上传左、右机位视频。", root)
             return
         rec = store.get(job_id)
-        profile_name = str((rec.meta if rec else {}).get("analysis_profile") or "fast")
+        profile_name = str((rec.meta if rec else {}).get("analysis_profile") or "快速")
         profile = get_profile(profile_name)
         sync_overrides = dict((rec.meta if rec else {}).get("sync_overrides") or {})
         sync_video_mode = str(sync_overrides.get("video_mode") or profile.sync.video_mode)
@@ -393,7 +401,7 @@ def run_job_pipeline(
         store.write_meta_file(job_id)
         pose3d_substage_metrics: dict[str, object] = {}
 
-        session_dir = store.pose3d_session_dir(job_id)
+        data_root = store.pose3d_session_dir(job_id)
         pose_out = store.pose3d_out_dir(job_id)
         collect = store.pose3d_collect_dir(job_id)
         stereo = default_stereo_params_path()
@@ -403,22 +411,24 @@ def run_job_pipeline(
             if override:
                 stereo = Path(str(override))
                 log(f"使用任务内标定参数: {stereo}")
-        prepare_session_videos(
+        pair_info = prepare_batch_job_videos(
+            job_id=job_id,
             synced_left=out_l,
             synced_right=out_r,
-            session_dir=session_dir,
+            data_root=data_root,
             stereo_src=stereo,
             log_fn=log,
         )
         user_settings = build_user_settings(
-            session_dir=session_dir,
-            stereo_params_json=session_dir / "stereo_params.json",
-            output_dir=pose_out,
+            data_root=data_root,
+            output_root=pose_out,
+            groups=[pair_info["group"]],
             detector_max_frames=profile.pose3d.max_frames,
             frame_stride=frame_stride,
             temporal_filter_enabled=profile.pose3d.temporal_filter_enabled,
             temporal_filter_window_size=profile.pose3d.temporal_filter_window_size,
         )
+        user_settings["_web_pair_info"] = pair_info
         log(
             f"pose3d 采样: source_fps={source_fps:.1f}, frame_stride={frame_stride}, "
             f"effective_fps={eff_fps}"
@@ -438,9 +448,9 @@ def run_job_pipeline(
         if os.environ.get("POSE3D_DUMP_USER_PARAMS", "").strip().lower() in ("1", "true", "yes"):
             write_user_params_py(
                 dest_py=user_params,
-                session_dir=session_dir,
-                stereo_params_json=session_dir / "stereo_params.json",
-                output_dir=pose_out,
+                data_root=data_root,
+                output_root=pose_out,
+                groups=[pair_info["group"]],
                 log_fn=log,
                 detector_max_frames=profile.pose3d.max_frames,
                 frame_stride=frame_stride,
@@ -449,19 +459,21 @@ def run_job_pipeline(
             )
         stage_timer.start("pose3d")
         pose_key = None
-        primary_csv = collect / "pose3d_abs_filtered.csv"
+        primary_csv = collect / "pose3d_wide_processed.csv"
         if cache is not None:
             pose3d_cache_params = {
+                "pipeline": "pose3d_batch_v3",
+                "reconstruction_mode": str(user_settings.get("pose3d", {}).get("reconstruction_mode")),
                 "max_frames": profile.pose3d.max_frames,
                 "frame_stride": frame_stride,
                 "target_analysis_fps": profile.pose3d.target_analysis_fps,
-                "temporal_filter_enabled": profile.pose3d.temporal_filter_enabled,
-                "temporal_filter_window_size": profile.pose3d.temporal_filter_window_size,
+                "postprocess_enabled": profile.pose3d.temporal_filter_enabled,
+                "postprocess_window_size": profile.pose3d.temporal_filter_window_size,
             }
             log("pose3d缓存参数: " + json.dumps(pose3d_cache_params, ensure_ascii=False))
             pose_key = cache.build_stage_key(
                 "pose3d",
-                file_paths=[out_l, out_r, session_dir / "stereo_params.json"],
+                file_paths=[out_l, out_r, data_root / pair_info["group"] / "stereo_params.json"],
                 file_roles=["left_aligned", "right_aligned", "stereo_params"],
                 params=pose3d_cache_params,
             )
@@ -470,7 +482,8 @@ def run_job_pipeline(
                 pose_key,
                 outputs={
                     "pose3d_abs.csv": collect / "pose3d_abs.csv",
-                    "pose3d_abs_filtered.csv": collect / "pose3d_abs_filtered.csv",
+                    "pose3d_abs_zup_ground0.csv": collect / "pose3d_abs_zup_ground0.csv",
+                    "pose3d_wide_processed.csv": collect / "pose3d_wide_processed.csv",
                 },
             )
             if cache_hits["pose3d"]:
@@ -497,7 +510,8 @@ def run_job_pipeline(
                     pose_key,
                     outputs={
                         "pose3d_abs.csv": collect / "pose3d_abs.csv",
-                        "pose3d_abs_filtered.csv": collect / "pose3d_abs_filtered.csv",
+                        "pose3d_abs_zup_ground0.csv": collect / "pose3d_abs_zup_ground0.csv",
+                        "pose3d_wide_processed.csv": collect / "pose3d_wide_processed.csv",
                     },
                 )
                 _save_optional_ground0(cache, pose_key, collect)
@@ -510,7 +524,11 @@ def run_job_pipeline(
             raw_fps = rec_after_pose.meta["input_probe"].get("fps")
             if isinstance(raw_fps, (int, float)) and raw_fps > 0:
                 probe_fps = float(raw_fps)
-        fps = probe_fps if probe_fps is not None else (float(rec_after_pose.fps) if rec_after_pose else 60.0)
+        fps = (
+            float(eff_fps)
+            if isinstance(eff_fps, (int, float)) and eff_fps > 0
+            else (probe_fps if probe_fps is not None else (float(rec_after_pose.fps) if rec_after_pose else 60.0))
+        )
 
         store.update(job_id, stage="kinematics", progress=0.72, message="运动学分析…")
         store.write_meta_file(job_id)

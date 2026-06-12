@@ -1,6 +1,6 @@
 <!-- 运行时必需。分析进度面板：Linear 风格进度条。 -->
 <template>
-  <div class="ap-progress" v-if="phase !== 'idle'">
+  <div class="ap-progress analysis-progress" v-if="phase !== 'idle'">
     <div class="ap-progress__head">
       <span class="ap-progress__dot" :data-phase="phase" />
       <span class="ap-progress__file">{{ fileLabel }}</span>

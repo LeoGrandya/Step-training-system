@@ -22,10 +22,11 @@ def load_stereo_params_json(json_path: str) -> Dict:
         return json.load(f)
 
 
-def prepare_stereo_params(settings: Dict) -> str:
+def prepare_stereo_params(settings: Dict, json_path: str | None = None) -> str:
     stereo_cfg = settings["stereo"]
     mode = stereo_cfg["stereo_mode"].lower()
-    json_path = stereo_cfg["stereo_params_json"]
+    if json_path is None:
+        json_path = stereo_cfg["stereo_params_json"]
 
     if mode == "json":
         return json_path

@@ -93,12 +93,6 @@
 
 ## 3. 使用步骤
 
-先安装依赖（本版本导出 Excel，需 `openpyxl>=3.1.5`）：
-
-```bash
-pip install -r requirements.txt
-```
-
 在项目根目录下运行：
 
 ```bash
@@ -235,3 +229,53 @@ C:\Users\你的用户名\.conda\envs\你的环境名\python.exe run_analysis.py
 - 与灯光/视频指令同步的时序参数
 - 更精细的力矩分解
 - 评价打分规则
+
+---
+
+## 新增：正式计算前的预处理流程
+
+本版在 `run_analysis.py` 中新增了预处理层，默认开启。流程为：
+
+```text
+原始 3D 长表 CSV
+→ 长表转宽表
+→ 质量检查
+→ 标记异常帧/异常关节点
+→ 小段异常插值修复
+→ 坐标低通滤波
+→ 再进入原有速度、腾空、关节、总体、评价参数计算
+```
+
+### 预处理参数在哪里改
+
+在 `user_params.py` 的 `preprocess` 字段中修改：
+
+- `enabled`：是否启用预处理。
+- `export_intermediate`：是否导出中间结果。
+- `max_interpolate_gap_frames`：连续异常不超过多少帧时允许插值修复。
+- `butterworth_cutoff_hz`：Butterworth 低通滤波截止频率。
+- `butterworth_order`：Butterworth 滤波阶数。
+- `foot_z_min_m` / `foot_z_max_m`：足部高度异常阈值。
+- `reproj_err_px_threshold` / `ray_gap_m_threshold`：重建误差阈值；为 `None` 时自动使用“中位数 + MAD”稳健阈值。
+
+### 预处理输出在哪里
+
+运行：
+
+```bash
+python run_analysis.py
+```
+
+会在输出目录下生成：
+
+```text
+输出结果_按要求版/预处理结果/
+├─ 01_宽表原始坐标.csv
+├─ 02_质量检查明细_全部.csv
+├─ 03_质量检查明细_仅异常.csv
+├─ 04_异常帧汇总.csv
+├─ 05_宽表插值滤波后坐标.csv
+└─ 06_预处理说明.json
+```
+
+其中 `05_宽表插值滤波后坐标.csv` 是正式计算前的宽表数据；后续速度、加速度、腾空、关节角等参数均基于预处理后的坐标进入计算。
