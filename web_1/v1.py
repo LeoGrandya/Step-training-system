@@ -1008,19 +1008,48 @@ def exit_app():
     return jsonify({"ok": True, "message": "force_exit"})
 
 
-# --- 专门为训练页面提供的硬件触发接口 ---
+# --- 硬件命令队列（长轮询模式，服务端→本地 relay→Arduino） ---
+import threading
+import time as _time
+
+_HARDWARE_QUEUE: list[dict] = []
+_HARDWARE_EVENT = threading.Event()
+
+def _hw_push_command(cmd: dict) -> None:
+    _HARDWARE_QUEUE.append(cmd)
+    _HARDWARE_EVENT.set()
+
+
 @app.route("/api/hardware/start", methods=["POST"])
 def trigger_hardware_api():
-    try:
-        # 采用动态导入，即使硬件脚本报错也不会导致主程序崩溃
-        from scripts.hardware.start_signal import run_feedback
-        success = run_feedback()
-        if success:
-            return jsonify({"ok": True}), 200
-        else:
-            return jsonify({"ok": False, "error": "Hardware communication failed"}), 500
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    """训练页点击'开始'→入队一条 hardware_start 命令，等 relay 取走执行。"""
+    params = request.get_json(silent=True) or {}
+    _hw_push_command({
+        "type": "hardware_start",
+        "beepDuration": params.get("beepDuration", 3000),
+    })
+    return jsonify({"ok": True, "queued": True})
+
+
+@app.route("/api/hardware/pending", methods=["GET"])
+def hardware_pending_api():
+    """本地 relay 长轮询此接口，阻塞等待命令。"""
+    timeout_s = float(request.args.get("timeout", "25"))
+    deadline = _time.monotonic() + min(max(timeout_s, 5), 60)
+    while _time.monotonic() < deadline:
+        if _HARDWARE_QUEUE:
+            cmd = _HARDWARE_QUEUE.pop(0)
+            if not _HARDWARE_QUEUE:
+                _HARDWARE_EVENT.clear()
+            return jsonify({"ok": True, "command": cmd})
+        _HARDWARE_EVENT.wait(timeout=1.0)
+    return jsonify({"ok": True, "command": None})
+
+
+@app.route("/api/hardware/ack", methods=["POST"])
+def hardware_ack_api():
+    """relay 执行完毕后确认（预留）。"""
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

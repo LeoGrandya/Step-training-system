@@ -2,6 +2,8 @@
  * 运行时必需。前端调用 Flask /api 的 fetch 封装（分析任务、用户等）。
  */
 const API_BASE = import.meta.env.VITE_ANALYSIS_API_BASE || '';
+// 生产环境视频上传走独立子域名，绕过 Cloudflare 100MB 免费限制
+const UPLOAD_BASE = import.meta.env.PROD ? 'https://upload.magic-cloak.com' : '';
 const ACCOUNT_ID_KEY = 'ai_sport_lab.current_account_id';
 
 function withAccountHeader(options = {}) {
@@ -33,7 +35,8 @@ export async function request(path, options = {}) {
 }
 
 export function createAnalysisJob(formData) {
-  return request('/api/analysis/jobs', { method: 'POST', body: formData });
+  // 视频上传走独立子域名，绕过 Cloudflare 100MB 免费限制
+  return request(`${UPLOAD_BASE}/api/analysis/jobs`, { method: 'POST', body: formData });
 }
 
 export function getAnalysisJob(jobId) {
