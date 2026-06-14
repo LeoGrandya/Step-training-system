@@ -149,64 +149,7 @@
 
           <p v-if="modalError" class="data-management-error">{{ modalError }}</p>
 
-          <!-- 基础步伐专用表单：九宫格选点 -->
-          <form v-if="activeResource.key === 'footwork-types'" class="data-management-form" @submit.prevent="saveResource">
-            <label class="data-management-field data-management-field--wide">
-              <span>名称</span>
-              <input v-model="form.name" type="text" required placeholder="例如：正手跨步" />
-            </label>
-            <label class="data-management-field">
-              <span>分类</span>
-              <select v-model="form.category" required>
-                <option value="">未选择</option>
-                <option value="单一步伐">单一步伐</option>
-                <option value="组合步伐">组合步伐</option>
-              </select>
-            </label>
-            <label class="data-management-field">
-              <span>起始格</span>
-              <select v-model.number="form.defaultStartCell">
-                <option v-for="n in 9" :key="n" :value="n">{{ n }}</option>
-              </select>
-            </label>
-            <label class="data-management-field data-management-field--wide">
-              <span>默认序列</span>
-              <div class="ft-sequence-area">
-                <div class="ft-grid">
-                  <button
-                    v-for="n in 9" :key="n" type="button"
-                    class="ft-grid-cell"
-                    :class="{ 'is-start': n === form.defaultStartCell, 'is-last': ftSeq.length && n === ftSeq[ftSeq.length - 1] }"
-                    @click="ftToggleCell(n)"
-                  >
-                    {{ n }}
-                    <span v-if="n === form.defaultStartCell" class="ft-grid-tag">起点</span>
-                  </button>
-                </div>
-                <div class="ft-seq-preview">
-                  <template v-if="ftSeq.length">
-                    <span v-for="(cell, i) in ftSeq" :key="i" class="ft-seq-badge" @click="ftSeq.splice(i, 1)">{{ cell }}</span>
-                  </template>
-                  <span v-else class="ft-seq-hint">点击九宫格添加步伐点</span>
-                </div>
-                <button type="button" class="link-button ft-seq-clear" @click="ftSeq.splice(0)">清空序列</button>
-              </div>
-            </label>
-            <label class="data-management-field data-management-field--wide">
-              <span>说明</span>
-              <textarea v-model="form.description" rows="2" placeholder="可选…"></textarea>
-            </label>
-            <div class="data-management-form__actions">
-              <button type="submit" :disabled="saving">
-                <span v-if="saving" class="data-management-saving-indicator"></span>
-                {{ saving ? '保存中…' : (editingId ? '保存修改' : '新增记录') }}
-              </button>
-              <button type="button" class="secondary-button" @click="closeModal">取消</button>
-            </div>
-          </form>
-
-          <!-- 通用表单 -->
-          <form v-else class="data-management-form" @submit.prevent="saveResource">
+          <form class="data-management-form" @submit.prevent="saveResource">
             <label v-for="field in activeResource.fields" :key="field.key" class="data-management-field">
               <span>{{ field.label }}</span>
               <select v-if="field.type === 'select'" v-model="form[field.key]" :required="field.required">
@@ -328,18 +271,6 @@ const activeResource = computed(() => resources.find((resource) => resource.key 
 const activeFilterFields = computed(() => activeResource.value.filterFields || []);
 const visibleEnd = computed(() => Math.min(total.value, query.offset + items.value.length));
 
-// 步伐九宫格序列
-const ftSeq = ref([]);
-
-function ftToggleCell(n) {
-  const idx = ftSeq.value.indexOf(n);
-  if (idx >= 0) {
-    ftSeq.value.splice(idx, 1);
-  } else {
-    ftSeq.value.push(n);
-  }
-}
-
 function defaultValueFor(field) {
   if (field.type === 'json') return '';
   return '';
@@ -348,17 +279,9 @@ function defaultValueFor(field) {
 function clearForm() {
   editingId.value = '';
   modalError.value = '';
-  ftSeq.value = [];
   for (const key of Object.keys(form)) delete form[key];
-  if (activeResource.value.key === 'footwork-types') {
-    form.name = '';
-    form.category = '';
-    form.defaultStartCell = 5;
-    form.description = '';
-  } else {
-    for (const field of activeResource.value.fields) {
-      form[field.key] = defaultValueFor(field);
-    }
+  for (const field of activeResource.value.fields) {
+    form[field.key] = defaultValueFor(field);
   }
 }
 
@@ -420,18 +343,6 @@ function parseFieldValue(field, value) {
 }
 
 function buildPayload() {
-  if (activeResource.value.key === 'footwork-types') {
-    // 自动生成编码，用时间戳避免碰撞
-    const code = 'ft_' + Date.now().toString(36);
-    return {
-      code,
-      name: (form.name || '').trim(),
-      category: form.category || null,
-      default_start_cell: form.defaultStartCell || 5,
-      default_sequence: ftSeq.value.length ? ftSeq.value.join('-') : String(form.defaultStartCell || 5),
-      description: (form.description || '').trim() || null,
-    };
-  }
   const payload = {};
   for (const field of activeResource.value.fields) {
     payload[field.key] = parseFieldValue(field, form[field.key]);
@@ -497,18 +408,9 @@ function switchResource(key) {
 function editResource(item) {
   editingId.value = item.id || item.jobId || '';
   modalError.value = '';
-  if (activeResource.value.key === 'footwork-types') {
-    form.name = item.name || '';
-    form.category = item.category || '';
-    form.defaultStartCell = item.defaultStartCell || 5;
-    form.description = item.description || '';
-    const seq = item.defaultSequence || String(item.defaultStartCell || 5);
-    ftSeq.value = seq.split('-').map(Number).filter(n => n >= 1 && n <= 9);
-  } else {
-    for (const field of activeResource.value.fields) {
-      const value = item[field.key];
-      form[field.key] = field.type === 'json' && value ? JSON.stringify(value, null, 2) : value ?? '';
-    }
+  for (const field of activeResource.value.fields) {
+    const value = item[field.key];
+    form[field.key] = field.type === 'json' && value ? JSON.stringify(value, null, 2) : value ?? '';
   }
   showModal.value = true;
 }
