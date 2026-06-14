@@ -273,10 +273,12 @@ onMounted(async () => {
 })
 
 async function onSubjectChanged(e) {
-  // 用新受试者 ID 重新加载用户数据
-  const ok = await ensureUser()
-  if (!ok) {
-    currentUserName.value = e.detail?.displayName || e.detail?.name || ''
+  // 直接使用 SiteNav 传来的受试者数据，无需额外 API 请求
+  const sub = e.detail
+  if (sub) {
+    currentUserName.value = sub.displayName || sub.name || ''
+    window.sessionStorage.setItem('pp-current-user', JSON.stringify(sub))
+    setCurrentSubjectId(sub.id)
   }
   leftFile.value = null
   rightFile.value = null
