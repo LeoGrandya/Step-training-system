@@ -272,8 +272,12 @@ onMounted(async () => {
   window.addEventListener('subject-changed', onSubjectChanged)
 })
 
-function onSubjectChanged(e) {
-  currentUserName.value = e.detail?.name || ''
+async function onSubjectChanged(e) {
+  // 用新受试者 ID 重新加载用户数据
+  const ok = await ensureUser()
+  if (!ok) {
+    currentUserName.value = e.detail?.displayName || e.detail?.name || ''
+  }
   leftFile.value = null
   rightFile.value = null
   stereoFile.value = null
