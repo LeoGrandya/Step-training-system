@@ -475,6 +475,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   transition: all 0.15s;
+  outline: none;
 }
 
 .ft-grid-cell:hover {
@@ -483,9 +484,19 @@ button:disabled {
   transform: scale(1.05);
 }
 
+.ft-grid-cell:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+
 .ft-grid-cell.is-start {
   border-color: #f59e0b;
   background: #fffbeb;
+}
+
+.ft-grid-cell.is-start:hover {
+  border-color: #0ea5e9;
+  background: #f0f9ff;
 }
 
 .ft-grid-cell.is-last {

@@ -32,13 +32,8 @@
           </span>
           <button v-else type="button" class="secondary-button" @click="newCustomSequence">新建跑动序列</button>
         </label>
-        <label>起始格
-          <select v-model.number="customStartCell">
-            <option v-for="n in 9" :key="n" :value="n">{{ n }}</option>
-          </select>
-        </label>
         <label>落点序列
-          <button type="button" class="seq-preview-trigger" @click="seqPickerOpen = true">
+          <button type="button" class="seq-preview-trigger" @click="openSeqModal">
             <span v-if="customSequence" class="seq-preview-trigger__badges">
               <span v-for="(cell, idx) in seqPreviewCells" :key="idx" class="seq-preview-trigger__badge">
                 {{ cell }}
@@ -48,19 +43,64 @@
             <span v-else class="seq-preview-trigger__placeholder">点击九宫格选择落点序列</span>
           </button>
         </label>
-        <SequenceGridPicker
-          :open="seqPickerOpen"
-          :modelValue="customSequence"
-          :startCell="customStartCell"
-          @update:modelValue="customSequence = $event"
-          @close="seqPickerOpen = false"
-        />
         <p v-if="customActionRequirements" class="step-hand-requirement">{{ customActionRequirements }}</p>
         <p v-if="customRhythm && customRhythm.defaultMs" class="interval-recommendation">
           节奏：{{ customRhythm.defaultMs }} ms
         </p>
         <button type="button" class="secondary-button" @click="saveCustomFootwork">保存当前序列到库</button>
       </template>
+
+      <!-- 九宫格选点弹窗（训练页） -->
+      <Teleport to="body">
+        <div v-if="seqModalOpen" class="data-management-modal" @click.self="seqModalOpen = false">
+          <div class="data-management-modal__card">
+            <div class="data-management-modal__head">
+              <h3>落点序列</h3>
+              <button type="button" class="link-button" @click="seqModalOpen = false" aria-label="关闭">✕</button>
+            </div>
+            <form class="data-management-form" @submit.prevent="confirmSeqModal">
+              <label class="data-management-field data-management-field--wide">
+                <span>名称</span>
+                <input v-model.trim="customName" type="text" required placeholder="给序列起个名字" />
+              </label>
+              <label class="data-management-field">
+                <span>起始格</span>
+                <select v-model.number="customStartCell">
+                  <option v-for="n in 9" :key="n" :value="n">{{ n }}</option>
+                </select>
+              </label>
+              <div class="data-management-field data-management-field--wide">
+                <span>落点序列</span>
+                <div class="ft-sequence-area">
+                  <div class="ft-grid">
+                    <button
+                      v-for="n in 9" :key="n" type="button"
+                      class="ft-grid-cell"
+                      :class="{ 'is-start': n === customStartCell, 'is-last': seqTemp.length && n === seqTemp[seqTemp.length - 1] }"
+                      @click="toggleSeqTemp(n)"
+                    >
+                      {{ n }}
+                      <span v-if="n === customStartCell" class="ft-grid-tag">起点</span>
+                    </button>
+                  </div>
+                  <div class="ft-seq-preview">
+                    <template v-if="seqTemp.length">
+                      <span v-for="(cell, i) in seqTemp" :key="i" class="ft-seq-badge" @click="seqTemp.splice(i, 1)">{{ cell }}</span>
+                    </template>
+                    <span v-else class="ft-seq-hint">点击九宫格添加步伐点</span>
+                  </div>
+                  <button type="button" class="link-button ft-seq-clear" @click="seqTemp.splice(0)">清空序列</button>
+                </div>
+              </div>
+              <div class="data-management-form__actions">
+                <button type="button" class="link-button" @click="seqTemp.pop()">撤销</button>
+                <button type="submit" :disabled="!seqTemp.length">确认 ({{ seqTemp.length }} 步)</button>
+                <button type="button" class="secondary-button" @click="seqModalOpen = false">取消</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Teleport>
       <label>亮灯时长(ms)<input v-model.number="lightDuration" type="number" min="200" max="3000" step="50" /></label>
       <label class="interval-field">步伐间隔(ms)
         <input v-model.number="stepInterval" type="number" min="400" max="5000" step="100" />
@@ -120,7 +160,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import FootworkDemoModal from './FootworkDemoModal.vue';
 import FootworkDemoPreview from './FootworkDemoPreview.vue';
-import SequenceGridPicker from './SequenceGridPicker.vue';
 import {
   createCustomFootwork,
   listCustomFootworks,
@@ -162,6 +201,7 @@ const countdown = ref(false);
 const statusText = ref('请选择参数后点击“准备”。');
 const stepSource = ref('preset');
 const stepType = ref(resolveDefaultStepType());
+const customName = ref('');
 const customStartCell = ref(5);
 const customSequence = ref('5,4,6,5');
 const customActionRequirements = ref('');
@@ -174,11 +214,28 @@ const cachedSequence = ref([]);
 const customFootworks = ref([]);
 const selectedCustomId = ref('');
 const hardwareFeedback = ref(true);
-const seqPickerOpen = ref(false);
+const seqModalOpen = ref(false);
+const seqTemp = ref([]);
 
 const seqPreviewCells = computed(() =>
   customSequence.value.split(',').filter(c => /^[1-9]$/.test(c.trim())).map(c => c.trim())
 );
+
+function openSeqModal() {
+  seqTemp.value = customSequence.value
+    ? customSequence.value.split(',').filter(c => /^[1-9]$/.test(c.trim())).map(Number)
+    : [];
+  seqModalOpen.value = true;
+}
+
+function toggleSeqTemp(n) {
+  seqTemp.value.push(n);
+}
+
+function confirmSeqModal() {
+  customSequence.value = seqTemp.value.join(',');
+  seqModalOpen.value = false;
+}
 const demoOpen = ref(false);
 const demoInitialStepType = computed(() => (
   stepSource.value === 'preset' ? stepType.value : 'single-step'
@@ -265,6 +322,7 @@ watch(
     loopCount,
     fullTableStepCount,
     hardwareFeedback,
+    customName,
     customStartCell,
     customSequence,
     customActionRequirements,
@@ -289,6 +347,7 @@ function collectTrainingPrefs() {
     loopCount: loopCount.value,
     fullTableStepCount: fullTableStepCount.value,
     hardwareFeedback: hardwareFeedback.value,
+    customName: customName.value,
     customStartCell: customStartCell.value,
     customSequence: customSequence.value,
     customActionRequirements: customActionRequirements.value,
@@ -314,6 +373,7 @@ function applyTrainingPrefs(prefs) {
   loopCount.value = prefs.loopCount;
   fullTableStepCount.value = prefs.fullTableStepCount;
   hardwareFeedback.value = prefs.hardwareFeedback;
+  customName.value = prefs.customName || '';
   customStartCell.value = prefs.customStartCell;
   customSequence.value = prefs.customSequence;
   customActionRequirements.value = prefs.customActionRequirements || '';
@@ -333,16 +393,19 @@ async function loadCustomFootworks() {
 
 function newCustomSequence() {
   selectedCustomId.value = '';
+  customName.value = '';
   customStartCell.value = 5;
   customSequence.value = '';
   customActionRequirements.value = '';
   customRhythm.value = null;
-  seqPickerOpen.value = true;
+  seqTemp.value = [];
+  seqModalOpen.value = true;
 }
 
 function applyCustomFootwork() {
   const item = customFootworks.value.find((entry) => entry.id === selectedCustomId.value);
   if (!item) return;
+  customName.value = item.name || '';
   customStartCell.value = item.startCell || 5;
   customSequence.value = item.sequence || '';
   customActionRequirements.value = item.actionRequirements || '';
@@ -354,11 +417,15 @@ function applyCustomFootwork() {
 }
 
 async function saveCustomFootwork() {
+  const name = customName.value.trim();
+  if (!name) {
+    statusText.value = '请先输入序列名称。';
+    return;
+  }
   if (!customSequence.value) {
     statusText.value = '请先在九宫格中选择落点序列。';
     return;
   }
-  const name = customSequence.value.replace(/,/g, '-');
   try {
     const result = await createCustomFootwork({
       name,

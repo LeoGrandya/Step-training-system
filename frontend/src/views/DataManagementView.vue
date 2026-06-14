@@ -169,7 +169,7 @@
                 <option v-for="n in 9" :key="n" :value="n">{{ n }}</option>
               </select>
             </label>
-            <label class="data-management-field data-management-field--wide">
+            <div class="data-management-field data-management-field--wide">
               <span>默认序列</span>
               <div class="ft-sequence-area">
                 <div class="ft-grid">
@@ -191,10 +191,69 @@
                 </div>
                 <button type="button" class="link-button ft-seq-clear" @click="ftSeq.splice(0)">清空序列</button>
               </div>
-            </label>
+            </div>
             <label class="data-management-field data-management-field--wide">
               <span>说明</span>
               <textarea v-model="form.description" rows="2" placeholder="可选…"></textarea>
+            </label>
+            <div class="data-management-form__actions">
+              <button type="submit" :disabled="saving">
+                <span v-if="saving" class="data-management-saving-indicator"></span>
+                {{ saving ? '保存中…' : (editingId ? '保存修改' : '新增记录') }}
+              </button>
+              <button type="button" class="secondary-button" @click="closeModal">取消</button>
+            </div>
+          </form>
+
+          <!-- 自定义跑动序列：九宫格选点 -->
+          <form v-else-if="activeResource.key === 'routes'" class="data-management-form" @submit.prevent="saveResource">
+            <label class="data-management-field data-management-field--wide">
+              <span>名称</span>
+              <input v-model="form.name" type="text" required placeholder="例如：正手两点" />
+            </label>
+            <label class="data-management-field">
+              <span>关联步伐</span>
+              <select v-model="form.footworkTypeId">
+                <option value="">未选择</option>
+                <option v-for="opt in fieldOptions({ lookup: 'footwork-types' })" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
+            </label>
+            <label class="data-management-field">
+              <span>起始格</span>
+              <select v-model.number="form.startCell">
+                <option v-for="n in 9" :key="n" :value="n">{{ n }}</option>
+              </select>
+            </label>
+            <div class="data-management-field data-management-field--wide">
+              <span>走位序列</span>
+              <div class="ft-sequence-area">
+                <div class="ft-grid">
+                  <button
+                    v-for="n in 9" :key="n" type="button"
+                    class="ft-grid-cell"
+                    :class="{ 'is-start': n === (form.startCell || 5), 'is-last': ftSeq.length && n === ftSeq[ftSeq.length - 1] }"
+                    @click="ftToggleCell(n)"
+                  >
+                    {{ n }}
+                    <span v-if="n === (form.startCell || 5)" class="ft-grid-tag">起点</span>
+                  </button>
+                </div>
+                <div class="ft-seq-preview">
+                  <template v-if="ftSeq.length">
+                    <span v-for="(cell, i) in ftSeq" :key="i" class="ft-seq-badge" @click="ftSeq.splice(i, 1)">{{ cell }}</span>
+                  </template>
+                  <span v-else class="ft-seq-hint">点击九宫格添加步伐点</span>
+                </div>
+                <button type="button" class="link-button ft-seq-clear" @click="ftSeq.splice(0)">清空序列</button>
+              </div>
+            </div>
+            <label class="data-management-field">
+              <span>默认间隔(ms)</span>
+              <input v-model.number="form.defaultMs" type="number" min="100" max="5000" placeholder="750" />
+            </label>
+            <label class="data-management-field data-management-field--wide">
+              <span>动作要求</span>
+              <textarea v-model="form.actionRequirements" rows="2" placeholder="可选…"></textarea>
             </label>
             <div class="data-management-form__actions">
               <button type="submit" :disabled="saving">
@@ -332,9 +391,7 @@ const visibleEnd = computed(() => Math.min(total.value, query.offset + items.val
 const ftSeq = ref([]);
 
 function ftToggleCell(n) {
-  const idx = ftSeq.value.indexOf(n);
-  if (idx >= 0) ftSeq.value.splice(idx, 1);
-  else ftSeq.value.push(n);
+  ftSeq.value.push(n);
 }
 
 function defaultValueFor(field) {
@@ -347,11 +404,18 @@ function clearForm() {
   modalError.value = '';
   ftSeq.value = [];
   for (const key of Object.keys(form)) delete form[key];
-  if (activeResource.value.key === 'footwork-types') {
+  const rk = activeResource.value.key;
+  if (rk === 'footwork-types') {
     form.name = '';
     form.category = '';
     form.defaultStartCell = 5;
     form.description = '';
+  } else if (rk === 'routes') {
+    form.name = '';
+    form.footworkTypeId = '';
+    form.startCell = 5;
+    form.defaultMs = '';
+    form.actionRequirements = '';
   } else {
     for (const field of activeResource.value.fields) {
       form[field.key] = defaultValueFor(field);
@@ -417,7 +481,8 @@ function parseFieldValue(field, value) {
 }
 
 function buildPayload() {
-  if (activeResource.value.key === 'footwork-types') {
+  const rk = activeResource.value.key;
+  if (rk === 'footwork-types') {
     const code = 'ft_' + Date.now().toString(36);
     return {
       code,
@@ -426,6 +491,16 @@ function buildPayload() {
       default_start_cell: form.defaultStartCell || 5,
       default_sequence: ftSeq.value.length ? ftSeq.value.join('-') : String(form.defaultStartCell || 5),
       description: (form.description || '').trim() || null,
+    };
+  }
+  if (rk === 'routes') {
+    return {
+      name: (form.name || '').trim(),
+      footworkTypeId: form.footworkTypeId || null,
+      startCell: form.startCell || 5,
+      sequence: ftSeq.value.length ? ftSeq.value.join(',') : '',
+      defaultMs: form.defaultMs || null,
+      actionRequirements: (form.actionRequirements || '').trim() || null,
     };
   }
   const payload = {};
@@ -493,13 +568,21 @@ function switchResource(key) {
 function editResource(item) {
   editingId.value = item.id || item.jobId || '';
   modalError.value = '';
-  if (activeResource.value.key === 'footwork-types') {
+  const rk = activeResource.value.key;
+  if (rk === 'footwork-types') {
     form.name = item.name || '';
     form.category = item.category || '';
     form.defaultStartCell = item.defaultStartCell || 5;
     form.description = item.description || '';
     const seq = item.defaultSequence || String(item.defaultStartCell || 5);
     ftSeq.value = seq.split('-').map(Number).filter(n => n >= 1 && n <= 9);
+  } else if (rk === 'routes') {
+    form.name = item.name || '';
+    form.footworkTypeId = item.footworkTypeId || '';
+    form.startCell = item.startCell || 5;
+    form.defaultMs = item.defaultMs || '';
+    form.actionRequirements = item.actionRequirements || '';
+    ftSeq.value = (item.sequence || '').split(',').map(Number).filter(n => n >= 1 && n <= 9);
   } else {
     for (const field of activeResource.value.fields) {
       const value = item[field.key];

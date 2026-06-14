@@ -249,6 +249,7 @@ export function createDefaultTrainingPrefs() {
     loopCount: 10,
     fullTableStepCount: DEFAULT_FULL_TABLE_STEP_COUNT,
     hardwareFeedback: true,
+    customName: '',
     customStartCell: 5,
     customSequence: '5,4,6,5',
     customActionRequirements: '',
