@@ -38,41 +38,23 @@
           </select>
         </label>
         <label>落点序列
-          <button type="button" class="seq-preview-trigger" @click="seqExpanded = !seqExpanded">
+          <button type="button" class="seq-preview-trigger" @click="seqPickerOpen = true">
             <span v-if="customSequence" class="seq-preview-trigger__badges">
               <span v-for="(cell, idx) in seqPreviewCells" :key="idx" class="seq-preview-trigger__badge">
                 {{ cell }}
                 <span v-if="idx < seqPreviewCells.length - 1" class="seq-preview-trigger__arrow">&rarr;</span>
               </span>
             </span>
-            <span v-else class="seq-preview-trigger__placeholder">点击展开九宫格选择落点序列</span>
+            <span v-else class="seq-preview-trigger__placeholder">点击九宫格选择落点序列</span>
           </button>
         </label>
-        <!-- 内嵌可展开九宫格 -->
-        <div v-if="seqExpanded" class="inline-grid-panel">
-          <div class="inline-grid">
-            <button
-              v-for="n in 9" :key="n" type="button"
-              class="inline-grid-cell"
-              :class="{ 'is-start': n === customStartCell, 'is-last': seqEditCells.length && n === seqEditCells[seqEditCells.length - 1] }"
-              @click="toggleSeqCell(n)"
-            >
-              {{ n }}
-              <span v-if="n === customStartCell" class="inline-grid-tag">起点</span>
-            </button>
-          </div>
-          <div class="inline-grid-preview">
-            <template v-if="seqEditCells.length">
-              <span v-for="(cell, i) in seqEditCells" :key="i" class="ft-seq-badge" @click="seqEditCells.splice(i, 1)">{{ cell }}</span>
-            </template>
-            <span v-else class="ft-seq-hint">点击九宫格添加步伐点</span>
-          </div>
-          <div class="inline-grid-actions">
-            <button type="button" class="link-button" @click="seqEditCells.splice(0)">清空</button>
-            <button type="button" class="link-button" @click="seqEditCells.pop()">撤销</button>
-            <button type="button" class="secondary-button" @click="confirmSeqEdit">确认 ({{ seqEditCells.length }} 步)</button>
-          </div>
-        </div>
+        <SequenceGridPicker
+          :open="seqPickerOpen"
+          :modelValue="customSequence"
+          :startCell="customStartCell"
+          @update:modelValue="customSequence = $event"
+          @close="seqPickerOpen = false"
+        />
         <p v-if="customActionRequirements" class="step-hand-requirement">{{ customActionRequirements }}</p>
         <p v-if="customRhythm && customRhythm.defaultMs" class="interval-recommendation">
           节奏：{{ customRhythm.defaultMs }} ms
@@ -138,6 +120,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import FootworkDemoModal from './FootworkDemoModal.vue';
 import FootworkDemoPreview from './FootworkDemoPreview.vue';
+import SequenceGridPicker from './SequenceGridPicker.vue';
 import {
   createCustomFootwork,
   listCustomFootworks,
@@ -191,23 +174,11 @@ const cachedSequence = ref([]);
 const customFootworks = ref([]);
 const selectedCustomId = ref('');
 const hardwareFeedback = ref(true);
-const seqExpanded = ref(false);
-const seqEditCells = ref([]);
+const seqPickerOpen = ref(false);
 
 const seqPreviewCells = computed(() =>
   customSequence.value.split(',').filter(c => /^[1-9]$/.test(c.trim())).map(c => c.trim())
 );
-
-function toggleSeqCell(n) {
-  const idx = seqEditCells.value.indexOf(n);
-  if (idx >= 0) seqEditCells.value.splice(idx, 1);
-  else seqEditCells.value.push(n);
-}
-
-function confirmSeqEdit() {
-  customSequence.value = seqEditCells.value.join(',');
-  seqExpanded.value = false;
-}
 const demoOpen = ref(false);
 const demoInitialStepType = computed(() => (
   stepSource.value === 'preset' ? stepType.value : 'single-step'
@@ -366,8 +337,7 @@ function newCustomSequence() {
   customSequence.value = '';
   customActionRequirements.value = '';
   customRhythm.value = null;
-  seqEditCells.value = [];
-  seqExpanded.value = true;
+  seqPickerOpen.value = true;
 }
 
 function applyCustomFootwork() {
