@@ -1515,6 +1515,8 @@ def _replace_frame_metrics_from_csv(dataset_id: str, csv_path: Path) -> int:
     if not csv_path.exists():
         return 0
 
+    # SQLite 的 BigInteger 不支持 autoincrement，需手动分配 ID
+    next_id = (db.session.query(func.max(KinematicsFrameMetric.id)).scalar() or 0) + 1
     metrics: list[KinematicsFrameMetric] = []
     with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
         for row in csv.DictReader(handle):
@@ -1523,6 +1525,7 @@ def _replace_frame_metrics_from_csv(dataset_id: str, csv_path: Path) -> int:
                 continue
             metrics.append(
                 KinematicsFrameMetric(
+                    id=next_id,
                     dataset_id=dataset_id,
                     frame_index=frame_index,
                     time_s=_csv_float(_row_value(row, "time_s", "timestamp_s", "time")),
@@ -1535,6 +1538,7 @@ def _replace_frame_metrics_from_csv(dataset_id: str, csv_path: Path) -> int:
                     right_ankle_angle_deg=_csv_float(_row_value(row, "right_ankle_angle_deg")),
                 )
             )
+            next_id += 1
     if metrics:
         db.session.add_all(metrics)
     return len(metrics)
