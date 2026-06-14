@@ -128,7 +128,7 @@ def build_step_metrics(frame_metrics: pd.DataFrame) -> pd.DataFrame:
         if state_col not in df.columns:
             continue
 
-        states = df[state_col].fillna(method="ffill").fillna("support").tolist()
+        states = df[state_col].ffill().fillna("support").tolist()
         takeoff_idx = None
 
         for i in range(1, len(df)):

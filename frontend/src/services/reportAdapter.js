@@ -23,6 +23,25 @@ const C = {
 }
 
 // ── helpers ──
+function hexToRgba(hex, alpha = 0.08) {
+  if (!hex || typeof hex !== 'string') return hex
+  if (hex.startsWith('rgba(') || hex.startsWith('hsla(')) return hex
+  if (hex.startsWith('rgb(')) return hex.replace(')', ', ' + alpha + ')').replace('rgb', 'rgba')
+  if (hex.startsWith('hsl(')) return hex.replace(')', ', ' + alpha + ')').replace('hsl', 'hsla')
+  const h = hex.replace('#', '')
+  if (h.length === 3) {
+    const [r, g, b] = h.split('').map(c => parseInt(c + c, 16))
+    return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')'
+  }
+  if (h.length === 6) {
+    const r = parseInt(h.substring(0, 2), 16)
+    const g = parseInt(h.substring(2, 4), 16)
+    const b = parseInt(h.substring(4, 6), 16)
+    return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')'
+  }
+  return hex
+}
+
 function finiteNumber(value) {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
@@ -72,7 +91,7 @@ function yAxisLinear(name = '', opts = {}) {
 }
 
 function lineSeries(name, data, color, opts = {}) {
-  return { name, type: 'line', smooth: true, symbol: 'none', data, lineStyle: { color, width: 2 }, areaStyle: { color: color.replace(')', ',0.08)').replace('rgb', 'rgba') }, ...opts }
+  return { name, type: 'line', smooth: true, symbol: 'none', data, lineStyle: { color, width: 2 }, areaStyle: { color: hexToRgba(color, 0.08) }, ...opts }
 }
 
 function barSeries(name, data, color) {
@@ -230,7 +249,7 @@ function buildStats(summary, derived, quality, stepMetrics, unitMetrics) {
 function buildSpeedChart(timeArr, speedArr, unitMetrics) {
   const p = compactPairs(timeArr, speedArr)
   if (!p.labels.length) return null
-  const labels = p.labels.map((v, i) => timeArr[i]?.toFixed(2) || i)
+  const labels = p.labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)
   // Build markArea from unit phase boundaries
   const markAreaData = []
   if (unitMetrics && unitMetrics.length) {
@@ -266,7 +285,7 @@ function buildAccelerationChart(timeArr, accelArr) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    xAxis: xAxisTime(p.labels.map((v, i) => timeArr[i]?.toFixed(2) || i)),
+    xAxis: xAxisTime(p.labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)),
     yAxis: yAxisLinear('m/s²'),
     series: [lineSeries('COM加速度', p.values, C.amber)],
   }
@@ -276,7 +295,7 @@ function buildSpeedAccelDual(timeArr, speedArr, accelArr) {
   const pS = compactPairs(timeArr, speedArr)
   const pA = compactPairs(timeArr, accelArr)
   if (!pS.labels.length) return null
-  const labels = pS.labels.map((v, i) => timeArr[i]?.toFixed(2) || i)
+  const labels = pS.labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)
   return {
     ...baseTooltip(),
     grid: { top: 22, bottom: 22, left: 46, right: 46 },
@@ -322,7 +341,7 @@ function buildTurningChart(timeArr, turnArr) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    xAxis: xAxisTime(p.labels.map((v, i) => timeArr[i]?.toFixed(2) || i)),
+    xAxis: xAxisTime(p.labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)),
     yAxis: yAxisLinear('deg/s'),
     series: [lineSeries('转向角速度', p.values, C.violet)],
   }
@@ -333,7 +352,7 @@ function buildClearanceChart(timeArr, leftClr, rightClr) {
   const pL = compactPairs(timeArr, leftClr)
   const pR = compactPairs(timeArr, rightClr)
   if (!pL.labels.length && !pR.labels.length) return null
-  const labels = (pL.labels.length ? pL : pR).labels.map((v, i) => timeArr[i]?.toFixed(2) || i)
+  const labels = (pL.labels.length ? pL : pR).labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)
   return {
     ...baseTooltip(),
     grid: baseGrid(),
@@ -449,7 +468,7 @@ function buildFootHeightChart(timeArr, leftClr, rightClr, ts) {
   const pL = compactPairs(timeArr, leftClr)
   const pR = compactPairs(timeArr, rightClr)
   if (!pL.labels.length && !pR.labels.length) return null
-  const labels = (pL.labels.length ? pL : pR).labels.map((v, i) => timeArr[i]?.toFixed(2) || i)
+  const labels = (pL.labels.length ? pL : pR).labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)
   return {
     ...baseTooltip(),
     grid: { top: 32, right: 22, bottom: 28, left: 52 },

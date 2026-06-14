@@ -300,7 +300,11 @@ def _cycle_indices(frame_df: pd.DataFrame, cycle_count: int) -> list[list[int]]:
     total_frames = len(frame_df)
     if total_frames == 0:
         return []
-    
+
+    # Guard: if cycle_count exceeds total_frames, cap to avoid zero-width intervals
+    if cycle_count > total_frames:
+        cycle_count = total_frames
+
     frames_per_cycle = total_frames // cycle_count
     remainder = total_frames % cycle_count
     

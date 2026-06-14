@@ -1,15 +1,42 @@
-"""Shared API helpers: pagination, JSON envelopes for /api/v1 and legacy routes."""
+"""Shared API helpers: pagination, JSON envelopes, password hashing for /api/v1 and legacy routes."""
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from dataclasses import dataclass
 from typing import Any
 
-from flask import jsonify
+from flask import jsonify, request
 
 
 DEFAULT_LIMIT = 30
 MAX_LIMIT = 200
+
+
+def hash_password(password: str) -> str:
+    """PBKDF2-SHA256 with per-password random salt."""
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return f"pbkdf2:sha256:100000${salt}${dk.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Verify a password against a hash produced by hash_password()."""
+    try:
+        algo, rest = stored.split("$", 1)
+        if algo != "pbkdf2:sha256:100000":
+            return False
+        salt, dk_hex = rest.split("$", 1)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+        return secrets.compare_digest(dk.hex(), dk_hex)
+    except ValueError:
+        return False
+
+
+def get_account_id_from_headers() -> str | None:
+    """Extract X-Account-Id from request headers (shared helper)."""
+    return (request.headers.get("X-Account-Id") or "").strip() or None
 
 
 @dataclass(frozen=True)

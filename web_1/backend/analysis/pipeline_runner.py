@@ -297,9 +297,14 @@ def run_job_pipeline(
         profile_name = str((rec.meta if rec else {}).get("analysis_profile") or "快速")
         profile = get_profile(profile_name)
         sync_overrides = dict((rec.meta if rec else {}).get("sync_overrides") or {})
-        sync_video_mode = str(sync_overrides.get("video_mode") or profile.sync.video_mode)
-        sync_crf = str(sync_overrides.get("crf") or profile.sync.crf)
-        sync_max_audio_seconds = float(sync_overrides.get("max_audio_seconds") or profile.sync.max_audio_seconds)
+
+        def _override(key, default):
+            val = sync_overrides.get(key)
+            return val if val is not None else default
+
+        sync_video_mode = str(_override("video_mode", profile.sync.video_mode))
+        sync_crf = str(_override("crf", profile.sync.crf))
+        sync_max_audio_seconds = float(_override("max_audio_seconds", profile.sync.max_audio_seconds))
         input_probe = load_video_probe(left_raw)
         source_fps = float(input_probe.get("fps") or (rec.fps if rec else 60.0))
         frame_stride = resolve_frame_stride(profile.pose3d, source_fps)
@@ -653,9 +658,6 @@ def run_job_pipeline(
             error=None,
             error_code=None,
         )
-        _cleanup_job_artifacts(store, job_id, log)
-        store.write_meta_file(job_id)
-        log("Pipeline 完成。")
     except Exception as e:
         tb = traceback.format_exc()
         log(tb)
@@ -669,6 +671,11 @@ def run_job_pipeline(
         elif st == "kinematics":
             code = "KINEMATICS_FAILED"
         _fail(store, job_id, code, f"{type(e).__name__}: {e}", root)
+    else:
+        # 仅分析成功时执行清理和元数据写入，异常不会覆盖 done 状态
+        _cleanup_job_artifacts(store, job_id, log)
+        store.write_meta_file(job_id)
+        log("Pipeline 完成。")
 
 
 def start_pipeline_thread(

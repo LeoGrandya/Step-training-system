@@ -103,9 +103,12 @@ export function useAnalysisJob() {
     if (!jobId.value || cancelled) return
     try {
       const response = await fetch('/api/analysis/jobs/' + encodeURIComponent(jobId.value))
-      const job = await response.json().catch(() => ({}))
       if (cancelled) return
-      if (!response.ok) throw new Error((job && job.error) || '查询任务失败')
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        throw new Error(text || `查询任务失败 (HTTP ${response.status})`)
+      }
+      const job = await response.json().catch(() => ({}))
       emitUpdate(job)
       if (cancelled) return
       if (job.status === 'done') {

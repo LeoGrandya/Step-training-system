@@ -1,8 +1,10 @@
-"""本地硬件中继：长轮询服务器命令队列 → pyserial → Arduino 灯板。
+r"""本地硬件中继：长轮询服务器命令队列 → pyserial → Arduino 灯板。
 
 用法（本地 Windows 终端）：
     cd web_1\scripts\hardware
-    ..\..\..\.venv\Scripts\python relay.py
+    python relay.py
+
+依赖：pyserial（项目 venv 中已安装）。建议先激活 venv 再运行。
 
 默认连接 analysis.magic-cloak.com，可通过环境变量覆盖：
     set HARDWARE_RELAY_HOST=http://127.0.0.1:5000
@@ -12,62 +14,40 @@ import os
 import sys
 import time
 import json
+import platform
 import urllib.request
 import urllib.error
-import serial
-import serial.tools.list_ports
+
+from protocol import (
+    DEFAULT_BEEP_DURATION_MS,
+    find_arduino_port,
+    list_ports,
+    send_arduino_signal,
+)
 
 HOST = os.environ.get("HARDWARE_RELAY_HOST", "https://analysis.magic-cloak.com")
-POLL_PATH = "/api/hardware/pending?timeout=30"
-BAUD_RATE = 9600
-BEEP_DURATION = 3000  # ms
+
+# POLL_PATH 中的 timeout 参数控制服务端长轮询等待时长（服务端限制 5-60s）。
+# 下面 urlopen(timeout=35) 必须 > POLL_PATH timeout，否则 HTTP 客户端会先于
+# 服务端返回而超时断连。当前 margin: 35 - 20 = 15s。
+POLL_PATH = "/api/hardware/pending?timeout=20"
+
+HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": f"HardwareRelay/1.0 ({platform.system()} {platform.machine()})",
+}
 
 
-def find_arduino_port():
-    """自动扫描串口，查找 Arduino（VID 通常是 2341 或 2A03）。"""
-    ports = serial.tools.list_ports.comports()
-    for port in ports:
-        vid = getattr(port, 'vid', None)
-        pid = getattr(port, 'pid', None)
-        desc = (port.description or "").lower()
-        manufacturer = (port.manufacturer or "").lower()
-        # Arduino 常见 VID
-        if vid in (0x2341, 0x2A03, 0x1A86):
-            return port.device
-        if "arduino" in desc or "arduino" in manufacturer:
-            return port.device
-        if "ch340" in desc.lower() or "ch340" in manufacturer:
-            return port.device
-    # fallback: 第一个可用串口
-    if ports:
-        return ports[0].device
-    return None
-
-
-def list_ports():
-    ports = serial.tools.list_ports.comports()
-    if not ports:
-        return "无可用串口"
-    lines = []
-    for p in ports:
-        lines.append(f"  {p.device} — {p.description} (VID:{p.vid:04X} PID:{p.pid:04X})")
-    return "\n".join(lines)
-
-
-def send_to_arduino(port_name):
-    """发送开始信号：红灯+蜂鸣→等待→全部关闭。"""
+def _post_ack(status):
+    """向服务端确认命令执行结果（fire-and-forget）。"""
     try:
-        ser = serial.Serial(port_name, BAUD_RATE, timeout=2)
-        ser.write(bytes.fromhex("A00701A8"))
-        print(f"[{time.strftime('%H:%M:%S')}] → {port_name} 开始信号已发送")
-        time.sleep(BEEP_DURATION / 1000)
-        ser.write(bytes.fromhex("A00000A0"))
-        print(f"[{time.strftime('%H:%M:%S')}] → {port_name} 关闭信号已发送")
-        ser.close()
-        return True
-    except Exception as e:
-        print(f"[ERROR] 串口通讯失败: {e}")
-        return False
+        data = json.dumps({"status": status}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{HOST}/api/hardware/ack", data=data, headers=HEADERS
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass  # ack 失败不影响主循环
 
 
 def poll_loop():
@@ -77,10 +57,9 @@ def poll_loop():
 
     while True:
         try:
-            req = urllib.request.Request(f"{HOST}{POLL_PATH}", headers={"Accept": "application/json"})
+            req = urllib.request.Request(f"{HOST}{POLL_PATH}", headers=HEADERS)
             with urllib.request.urlopen(req, timeout=35) as resp:
                 data = json.loads(resp.read())
-            cmd = data.get("command") if data.get("ok") else None
         except urllib.error.URLError as e:
             print(f"[WARN] 网络错误: {e}，5秒后重试...")
             time.sleep(5)
@@ -90,7 +69,13 @@ def poll_loop():
             time.sleep(3)
             continue
 
-        if not cmd:
+        if not data.get("ok"):
+            err = data.get("error", "未知错误")
+            print(f"[WARN] 服务端返回错误: {err}")
+            continue
+
+        cmd = data.get("command")
+        if cmd is None:
             continue
 
         cmd_type = cmd.get("type")
@@ -101,8 +86,12 @@ def poll_loop():
             if not port:
                 print("[ERROR] 未找到 Arduino 串口！请检查设备连接。")
                 print(f"当前串口:\n{list_ports()}")
+                _post_ack("fail")
                 continue
-            send_to_arduino(port)
+
+            beep_ms = cmd.get("beepDuration", DEFAULT_BEEP_DURATION_MS)
+            success = send_arduino_signal(port, beep_duration_ms=beep_ms)
+            _post_ack("ok" if success else "fail")
 
 
 if __name__ == "__main__":

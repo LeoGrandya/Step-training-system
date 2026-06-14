@@ -159,10 +159,21 @@ class JobStore:
             return None
 
     def _write_meta_file_record(self, rec: JobRecord) -> None:
+        import os
+        import tempfile
         path = self.job_dir(rec.job_id) / "meta.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(rec.to_public_dict(), f, ensure_ascii=False, indent=2)
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=".meta_", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(rec.to_public_dict(), f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, str(path))
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def get(self, job_id: str) -> Optional[JobRecord]:
         with self._lock:

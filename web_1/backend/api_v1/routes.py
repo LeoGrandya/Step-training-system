@@ -5,7 +5,7 @@ from __future__ import annotations
 from flask import Blueprint, request
 
 from backend import repositories as repo
-from backend.api_utils import json_err, json_ok, list_response, parse_pagination
+from backend.api_utils import get_account_id_from_headers as _account_id, json_err, json_ok, list_response, parse_pagination
 from backend.models import RouteDefinition
 
 
@@ -14,10 +14,6 @@ def _json_payload():
     if not isinstance(payload, dict):
         return None
     return payload
-
-
-def _account_id() -> str | None:
-    return (request.headers.get("X-Account-Id") or "").strip() or None
 
 
 def _check_route_ownership(route_id: str, account_id: str) -> bool | None:

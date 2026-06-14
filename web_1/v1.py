@@ -561,10 +561,7 @@ def create_analysis_job():
         source_fps = float(probe.get("fps") or fps_f or 60.0)
         stride = resolve_frame_stride(analysis_profile.pose3d, source_fps)
         stride_factor = 1.0 / max(1, stride)
-        base_mult = (
-            2.8 if analysis_profile.name == "快速"
-            else (4.5 if analysis_profile.name == "均衡" else 6.0)
-        )
+        base_mult = analysis_profile.estimated_time_multiplier
         estimated = round(duration_s * base_mult * stride_factor, 1)
     probe_fps = probe.get("fps")
     job_fps = float(probe_fps) if isinstance(probe_fps, (int, float)) and probe_fps > 0 else fps_f
@@ -1009,22 +1006,16 @@ def exit_app():
 
 
 # --- 硬件命令队列（长轮询模式，服务端→本地 relay→Arduino） ---
-import threading
-import time as _time
+import queue
 
-_HARDWARE_QUEUE: list[dict] = []
-_HARDWARE_EVENT = threading.Event()
-
-def _hw_push_command(cmd: dict) -> None:
-    _HARDWARE_QUEUE.append(cmd)
-    _HARDWARE_EVENT.set()
+_HARDWARE_QUEUE: queue.Queue = queue.Queue()
 
 
 @app.route("/api/hardware/start", methods=["POST"])
 def trigger_hardware_api():
     """训练页点击'开始'→入队一条 hardware_start 命令，等 relay 取走执行。"""
     params = request.get_json(silent=True) or {}
-    _hw_push_command({
+    _HARDWARE_QUEUE.put({
         "type": "hardware_start",
         "beepDuration": params.get("beepDuration", 3000),
     })
@@ -1035,15 +1026,12 @@ def trigger_hardware_api():
 def hardware_pending_api():
     """本地 relay 长轮询此接口，阻塞等待命令。"""
     timeout_s = float(request.args.get("timeout", "25"))
-    deadline = _time.monotonic() + min(max(timeout_s, 5), 60)
-    while _time.monotonic() < deadline:
-        if _HARDWARE_QUEUE:
-            cmd = _HARDWARE_QUEUE.pop(0)
-            if not _HARDWARE_QUEUE:
-                _HARDWARE_EVENT.clear()
-            return jsonify({"ok": True, "command": cmd})
-        _HARDWARE_EVENT.wait(timeout=1.0)
-    return jsonify({"ok": True, "command": None})
+    timeout_s = min(max(timeout_s, 5), 60)
+    try:
+        cmd = _HARDWARE_QUEUE.get(timeout=timeout_s)
+        return jsonify({"ok": True, "command": cmd})
+    except queue.Empty:
+        return jsonify({"ok": True, "command": None})
 
 
 @app.route("/api/hardware/ack", methods=["POST"])
@@ -1058,4 +1046,5 @@ if __name__ == "__main__":
     # 默认关闭 reloader：否则代码保存会重启进程，内存任务丢失并导致轮询 404。
     # 需要热重载时可设环境变量 FLASK_USE_RELOADER=1
     _use_reload = os.environ.get("FLASK_USE_RELOADER", "").strip() in ("1", "true", "yes")
-    app.run(debug=True, use_reloader=_use_reload)
+    _debug = os.environ.get("FLASK_DEBUG", "").strip().lower() in ("1", "true", "yes")
+    app.run(debug=_debug, use_reloader=_use_reload)

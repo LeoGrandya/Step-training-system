@@ -13,7 +13,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 
 from .db import db
-from .api_utils import paginate_query
+from .api_utils import hash_password, paginate_query
 from .delete_policy import active_filter, apply_soft_delete, keyword_filter
 from .models import (
     Account,
@@ -33,6 +33,7 @@ from .models import (
     Subject,
     TrainingConfig,
     TrainingVideo,
+    now_utc,
 )
 from .route_identity import (
     apply_active_route_identity,
@@ -51,10 +52,6 @@ class InvalidReferenceError(RuntimeError):
 
 class ReferenceConflictError(RuntimeError):
     """Raised when a delete would break a known business reference."""
-
-
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def now_iso_utc() -> str:
@@ -1518,7 +1515,6 @@ def _replace_frame_metrics_from_csv(dataset_id: str, csv_path: Path) -> int:
     if not csv_path.exists():
         return 0
 
-    next_id = (db.session.query(func.max(KinematicsFrameMetric.id)).scalar() or 0) + 1
     metrics: list[KinematicsFrameMetric] = []
     with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
         for row in csv.DictReader(handle):
@@ -1527,7 +1523,6 @@ def _replace_frame_metrics_from_csv(dataset_id: str, csv_path: Path) -> int:
                 continue
             metrics.append(
                 KinematicsFrameMetric(
-                    id=next_id,
                     dataset_id=dataset_id,
                     frame_index=frame_index,
                     time_s=_csv_float(_row_value(row, "time_s", "timestamp_s", "time")),
@@ -1540,7 +1535,6 @@ def _replace_frame_metrics_from_csv(dataset_id: str, csv_path: Path) -> int:
                     right_ankle_angle_deg=_csv_float(_row_value(row, "right_ankle_angle_deg")),
                 )
             )
-            next_id += 1
     if metrics:
         db.session.add_all(metrics)
     return len(metrics)
@@ -2138,7 +2132,7 @@ def _account_values_from_payload(payload: dict[str, Any], *, existing: Account |
         # New account — require initial password
         if not raw_password:
             raise ValueError("请填写密码")
-        password_hash = _hash_account_password(raw_password)
+        password_hash = hash_password(raw_password)
     else:
         # Update — keep existing password_hash unchanged
         password_hash = existing.password_hash
@@ -2149,14 +2143,6 @@ def _account_values_from_payload(payload: dict[str, Any], *, existing: Account |
         "username": username,
         "status": status,
     }
-
-
-def _hash_account_password(password: str) -> str:
-    """PBKDF2-SHA256 hash, compatible with auth.py."""
-    import hashlib
-    salt = "pose3d_salt_v1"
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
-    return f"pbkdf2:sha256:100000${salt}${dk.hex()}"
 
 
 def _ensure_account_available(*, account_id: str | None, account: str) -> None:

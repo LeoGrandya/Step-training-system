@@ -37,8 +37,12 @@ def _safe_job_segment(job_id: str) -> str:
     value = str(job_id or "").strip()
     if not value:
         raise ValueError("job_id 不能为空")
-    if any(ch in value for ch in ('/', '\\', ':', '*', '?', '"', '<', '>', '|')):
+    if any(ch in value for ch in ('/', '\\', ':', '*', '?', '"', '<', '>', '|', '\x00')):
         raise ValueError(f"job_id 包含非法路径字符: {job_id!r}")
+    if ".." in value:
+        raise ValueError(f"job_id 包含非法路径片段: {job_id!r}")
+    if value != os.path.basename(value):
+        raise ValueError(f"job_id 包含路径分隔符: {job_id!r}")
     return value
 
 

@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Query
 
 from .db import db
-
-
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+from .models import now_utc
 
 
 # Tables that must use is_active + deleted_at instead of physical DELETE when referenced.

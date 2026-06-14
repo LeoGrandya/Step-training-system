@@ -6,7 +6,6 @@ import json
 import os
 import shutil
 import sys
-import inspect
 from pathlib import Path
 from typing import Callable
 from copy import deepcopy
@@ -14,34 +13,6 @@ from copy import deepcopy
 import yaml
 
 from .universal2_compat import write_legacy_csv_bundle
-
-def _patch_pandas_fillna_compat() -> None:
-    """
-    Make pandas-style `.fillna(method=...)` calls work on environments
-    where NDFrame.fillna no longer accepts the `method` keyword.
-    """
-    import pandas as pd  # type: ignore
-
-    original = pd.core.generic.NDFrame.fillna  # type: ignore[attr-defined]
-    if getattr(original, "_compat_patched", False):
-        return
-
-    def _compat_fillna(self, value=None, method=None, *args, **kwargs):  # type: ignore[no-untyped-def]
-        if method is not None:
-            m = str(method).lower()
-            if m in ("ffill", "pad"):
-                return self.ffill()
-            if m in ("bfill", "backfill"):
-                return self.bfill()
-            raise ValueError(f"Unsupported fillna(method={method!r})")
-        sig = inspect.signature(original)
-        if "value" in sig.parameters:
-            return original(self, value=value, *args, **kwargs)
-        return original(self, value, *args, **kwargs)
-
-    _compat_fillna._compat_patched = True  # type: ignore[attr-defined]
-    pd.core.generic.NDFrame.fillna = _compat_fillna  # type: ignore[attr-defined]
-
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -106,7 +77,6 @@ def run_kinematics(
     log_fn: Callable[[str], None],
     profile: dict | None = None,
 ) -> None:
-    _patch_pandas_fillna_compat()
     _ensure_runtime_dependencies()
     root = footwork_root()
     if not pose3d_csv.exists():

@@ -117,7 +117,7 @@ function mockSymmetry() {
 function renderCharts() {
   if (dashRef.value) {
     const c = echarts.init(dashRef.value)
-    c.setOption(mockDownloads(), true)
+    c.setOption(props.downloads || mockDownloads(), true)
     charts.push(c)
   }
   if (paraRef.value) {
@@ -133,7 +133,7 @@ function renderCharts() {
 }
 
 onMounted(() => { renderCharts() })
-watch(() => [props.symmetry, props.parallelCoords], () => { renderCharts() })
+watch(() => [props.symmetry, props.parallelCoords, props.downloads], () => { renderCharts() })
 
 onBeforeUnmount(() => { charts.forEach(c => c.dispose()) })
 </script>

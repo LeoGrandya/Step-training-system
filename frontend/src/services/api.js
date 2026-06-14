@@ -26,17 +26,26 @@ function withAccountHeader(options = {}) {
 export async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, withAccountHeader(options));
   const contentType = response.headers.get('content-type') || '';
-  const payload = contentType.includes('application/json') ? await response.json() : await response.text();
+  const isJson = contentType.includes('application/json');
+  const payload = isJson ? await response.json() : await response.text();
   if (!response.ok) {
-    const message = typeof payload === 'object' ? payload.error || payload.detail : payload;
-    throw new Error(message || `Request failed: ${response.status}`);
+    let message;
+    if (typeof payload === 'object') {
+      message = payload.error || payload.detail || `Request failed: ${response.status}`;
+    } else {
+      message = `Server error (${response.status})`;
+      if (typeof payload === 'string' && payload.length > 0 && payload.length < 200) {
+        message = payload.substring(0, 200);
+      }
+    }
+    throw new Error(message);
   }
   return payload;
 }
 
-export function createAnalysisJob(formData) {
+export function createAnalysisJob(formData, extraOptions = {}) {
   // 视频上传走独立子域名，绕过 Cloudflare 100MB 免费限制
-  return request(`${UPLOAD_BASE}/api/analysis/jobs`, { method: 'POST', body: formData });
+  return request(`${UPLOAD_BASE}/api/analysis/jobs`, { method: 'POST', body: formData, ...extraOptions });
 }
 
 export function getAnalysisJob(jobId) {

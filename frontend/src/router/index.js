@@ -48,6 +48,7 @@ async function accountHasSubjects() {
     const response = await fetch('/api/v1/subjects?limit=1', {
       headers: { 'X-Account-Id': aid },
     });
+    if (!response.ok) return false;
     const payload = await response.json().catch(() => ({}));
     subjectCache.count = payload.total || 0;
     subjectCache.checkedAt = Date.now();

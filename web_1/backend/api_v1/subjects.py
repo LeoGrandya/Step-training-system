@@ -5,7 +5,7 @@ from __future__ import annotations
 from flask import Blueprint, request
 
 from backend import repositories as repo
-from backend.api_utils import json_err, json_ok, list_response, parse_pagination
+from backend.api_utils import get_account_id_from_headers as _account_id, json_err, json_ok, list_response, parse_pagination
 from backend.models import Subject
 
 
@@ -25,10 +25,6 @@ def _normalize_name(value):
 def _is_valid_name(name):
     import re
     return bool(re.match(r'^[一-鿿㐀-䶿a-zA-Z\s]+$', name))
-
-
-def _account_id() -> str | None:
-    return (request.headers.get("X-Account-Id") or "").strip() or None
 
 
 def _check_ownership(subject_id: str, account_id: str) -> bool:

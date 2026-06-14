@@ -31,8 +31,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useECharts } from '../../composables/useECharts.js'
 
 const props = defineProps({
   statsRaw: { type: Object, default: () => ({}) },
@@ -41,7 +42,7 @@ const props = defineProps({
 
 const donutRefs = []
 const setDonutRef = (el, idx) => { if (el) donutRefs[idx] = el }
-let charts = []
+const { initChart, disposeAll } = useECharts()
 
 const donutMetrics = computed(() => {
   const summary = props.statsRaw?.summary || {}
@@ -73,15 +74,13 @@ const textStats = computed(() => {
 })
 
 function renderDonuts() {
-  charts.forEach(c => c.dispose())
-  charts = []
+  disposeAll()
   donutRefs.forEach((dom, idx) => {
     if (!dom) return
-    const chart = echarts.init(dom)
     const m = donutMetrics.value[idx]
     if (!m) return
     const colors = ['#38bdf8', '#10b981', '#f59e0b']
-    chart.setOption({
+    initChart(dom, {
       tooltip: { trigger: 'item' },
       series: [{
         type: 'pie', radius: ['75%', '92%'], silent: true,
@@ -96,11 +95,9 @@ function renderDonuts() {
         ],
       }],
     })
-    charts.push(chart)
   })
 }
 
 onMounted(() => nextTick(renderDonuts))
 watch([donutMetrics], () => nextTick(renderDonuts), { deep: true })
-onBeforeUnmount(() => charts.forEach(c => c.dispose()))
 </script>

@@ -2,32 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
-import secrets
-
 from flask import Blueprint, request
 
 from backend import repositories as repo
-from backend.api_utils import json_err, json_ok
+from backend.api_utils import hash_password, json_err, json_ok, verify_password
 from backend.models import Account, AccountRole, Role
-
-
-def _hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
-    return f"pbkdf2:sha256:100000${salt}${dk.hex()}"
-
-
-def _verify_password(password: str, stored: str) -> bool:
-    try:
-        algo, rest = stored.split("$", 1)
-        if algo != "pbkdf2:sha256:100000":
-            return stored == _hash_password(password)
-        salt, dk_hex = rest.split("$", 1)
-        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
-        return secrets.compare_digest(dk.hex(), dk_hex)
-    except Exception:
-        return False
 
 
 def _json_payload():
@@ -100,7 +79,7 @@ def register(bp: Blueprint) -> None:
             return json_err("account_and_password_required", 400)
 
         row = Account.query.filter(Account.account == account, Account.status == "active").first()
-        if row is None or not _verify_password(password, row.password_hash):
+        if row is None or not verify_password(password, row.password_hash):
             return json_err("invalid_credentials", 401)
 
         return json_ok(item=_serialize_account_with_roles(row))
@@ -132,12 +111,12 @@ def register(bp: Blueprint) -> None:
         if row is None:
             return json_err("not_found", 404)
 
-        if not _verify_password(old_password, row.password_hash):
+        if not verify_password(old_password, row.password_hash):
             return json_err("invalid_old_password", 400)
         if len(new_password) < 4:
             return json_err("password_too_short", 400)
 
-        row.password_hash = _hash_password(new_password)
+        row.password_hash = hash_password(new_password)
         row.updated_at = repo.now_utc()
         repo.db.session.commit()
         return json_ok()

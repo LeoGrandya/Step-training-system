@@ -46,7 +46,7 @@ export function useAnalysisUpload() {
 
     try {
       const formData = buildFormData(leftFile, rightFile, stereoFile, params)
-      const payload = await createAnalysisJob(formData)
+      const payload = await createAnalysisJob(formData, { signal: submitAbortController.signal })
       return payload
     } catch (error) {
       if (error && error.name === 'AbortError') return null

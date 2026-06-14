@@ -46,4 +46,8 @@ class AnalysisExecutor:
                     self._running = max(0, self._running - 1)
                 self._capacity.release()
 
-        self._pool.submit(wrapped)
+        try:
+            self._pool.submit(wrapped)
+        except Exception:
+            self._capacity.release()
+            raise

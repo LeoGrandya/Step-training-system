@@ -48,11 +48,11 @@ def run_job_sync(
             video_mode=mode,
             progress=progress_sink,
         )
-    except Exception:
+    except Exception as e:
         if mode == "copy":
             fallback_used = True
             mode = "reencode"
-            log_fn("copy 模式同步失败，自动回退到 reencode 重试一次。")
+            log_fn(f"copy 模式同步失败（{type(e).__name__}: {e}），自动回退到 reencode 重试一次。")
             run_sync(
                 left_in,
                 right_in,

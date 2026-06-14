@@ -5,7 +5,7 @@ from __future__ import annotations
 from flask import Blueprint, request
 
 from backend import repositories as repo
-from backend.api_utils import json_err, json_ok, list_response, parse_pagination
+from backend.api_utils import get_account_id_from_headers as _account_id, json_err, json_ok, list_response, parse_pagination
 
 
 def _json_payload():
@@ -23,10 +23,6 @@ def _int_query(name: str) -> int | None:
         return int(raw)
     except (TypeError, ValueError):
         return None
-
-
-def _account_id() -> str | None:
-    return (request.headers.get("X-Account-Id") or "").strip() or None
 
 
 def _account_subject_ids() -> list[str] | None:

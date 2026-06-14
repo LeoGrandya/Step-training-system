@@ -26,11 +26,13 @@ class AnalysisProfile:
     name: str
     sync: SyncProfile
     pose3d: Pose3dProfile
+    estimated_time_multiplier: float = 2.8
 
 
 FAST = AnalysisProfile(
     name="快速",
     sync=SyncProfile(video_mode="copy", crf="28", max_audio_seconds=45.0),
+    estimated_time_multiplier=2.8,
     pose3d=Pose3dProfile(
         max_frames=None,
         temporal_filter_enabled=True,
@@ -43,6 +45,7 @@ FAST = AnalysisProfile(
 BALANCED = AnalysisProfile(
     name="均衡",
     sync=SyncProfile(video_mode="reencode", crf="23", max_audio_seconds=90.0),
+    estimated_time_multiplier=4.5,
     pose3d=Pose3dProfile(
         max_frames=None,
         temporal_filter_enabled=True,
@@ -55,6 +58,7 @@ BALANCED = AnalysisProfile(
 QUALITY = AnalysisProfile(
     name="高质量",
     sync=SyncProfile(video_mode="reencode", crf="20", max_audio_seconds=120.0),
+    estimated_time_multiplier=6.0,
     pose3d=Pose3dProfile(
         max_frames=None,
         temporal_filter_enabled=True,

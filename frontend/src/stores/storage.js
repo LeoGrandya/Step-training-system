@@ -42,7 +42,11 @@ function readJson(key, fallback) {
 }
 
 function writeJson(key, value) {
-  window.localStorage.setItem(key, JSON.stringify(value));
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // localStorage may be full or blocked
+  }
 }
 
 function nowIso() {
@@ -85,7 +89,7 @@ export function loginAccountSession(account) {
 }
 
 export function logoutAccountSession() {
-  window.localStorage.removeItem(STORAGE_KEYS.session);
+  try { window.localStorage.removeItem(STORAGE_KEYS.session); } catch {}
   setCurrentAccountId('');
   setCurrentUserId('');
   setCurrentSubjectId('');
@@ -157,7 +161,7 @@ export function getHardwareFeedbackEnabled() {
 }
 
 export function setHardwareFeedbackEnabled(enabled) {
-  window.localStorage.setItem(STORAGE_KEYS.hardwareFeedback, enabled ? '1' : '0');
+  try { window.localStorage.setItem(STORAGE_KEYS.hardwareFeedback, enabled ? '1' : '0'); } catch {}
 }
 
 export function loginSession(name, userId = '') {
@@ -171,7 +175,7 @@ export function loginSession(name, userId = '') {
 }
 
 export function logoutSession() {
-  window.localStorage.removeItem(STORAGE_KEYS.session);
+  try { window.localStorage.removeItem(STORAGE_KEYS.session); } catch {}
   setCurrentUserId('');
 }
 
@@ -189,7 +193,7 @@ export function savePose3dProfile(profile) {
     data: normalized,
   });
   const hasMode = Boolean(readPose3dTrainingMode());
-  window.localStorage.setItem(STORAGE_KEYS.pose3dFunnelState, hasMode ? 'done' : 'need_mode');
+  try { window.localStorage.setItem(STORAGE_KEYS.pose3dFunnelState, hasMode ? 'done' : 'need_mode'); } catch {}
   return normalized;
 }
 
@@ -216,7 +220,7 @@ export function getTrainingMode() {
 
 export function saveTrainingMode(mode, extra = {}) {
   if (!ALLOWED_TRAINING_MODES.includes(mode)) return '';
-  window.localStorage.setItem(STORAGE_KEYS.trainingMode, mode);
+  try { window.localStorage.setItem(STORAGE_KEYS.trainingMode, mode); } catch {}
   writeJson(STORAGE_KEYS.pose3dTrainingMode, {
     version: POSE3D_STORAGE_VERSION,
     savedAt: nowIso(),
@@ -224,12 +228,12 @@ export function saveTrainingMode(mode, extra = {}) {
     extra: { ...extra },
   });
   writeSessionValue(STORAGE_KEYS.pose3dCurrentMode, mode);
-  window.localStorage.setItem(STORAGE_KEYS.pose3dFunnelState, 'done');
+  try { window.localStorage.setItem(STORAGE_KEYS.pose3dFunnelState, 'done'); } catch {}
   return mode;
 }
 
 export function saveCurrentJobId(jobId) {
-  window.localStorage.setItem(STORAGE_KEYS.currentJobId, jobId);
+  try { window.localStorage.setItem(STORAGE_KEYS.currentJobId, jobId); } catch {}
 }
 
 export function getCurrentJobId() {

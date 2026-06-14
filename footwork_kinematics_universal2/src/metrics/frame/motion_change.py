@@ -71,7 +71,7 @@ def compute_motion_change_metrics(df: pd.DataFrame) -> pd.DataFrame:
     speed_change_rate_abs = (horizontal_speed.diff() / dt).abs().replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
     out["com_horizontal_speed_mps"] = horizontal_speed
-    out["motion_heading_deg"] = heading.fillna(method="ffill")
+    out["motion_heading_deg"] = heading.ffill()
     out["motion_turning_speed_deg_s"] = motion_turning_speed
     out["direction_change_flag"] = direction_change_flag.fillna(False).astype(bool)
     out["direction_change_speed_delta_mps"] = speed_delta_abs.where(out["direction_change_flag"], 0.0)
