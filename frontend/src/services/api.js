@@ -2,11 +2,9 @@
  * 运行时必需。前端调用 Flask /api 的 fetch 封装（分析任务、用户等）。
  */
 const API_BASE = import.meta.env.VITE_ANALYSIS_API_BASE || '';
-// 生产环境视频上传走独立子域名，绕过 Cloudflare 100MB 免费限制
-// 本地运行时使用空 base（同源请求），避免 Failed to fetch
-const UPLOAD_BASE = (import.meta.env.PROD && !globalThis.location?.hostname?.match(/^(localhost|127\.0\.0\.1)$/))
-  ? 'https://upload.magic-cloak.com'
-  : '';
+// 视频上传统一走同源请求。upload.magic-cloak.com 子域名原用于绕过 Cloudflare 100MB 限制，
+// 但 Cloudflare 代理配置不稳定，实际极少有乒乓球视频超 100MB，同源足够。
+const UPLOAD_BASE = '';
 const ACCOUNT_ID_KEY = 'ai_sport_lab.current_account_id';
 
 function withAccountHeader(options = {}) {
