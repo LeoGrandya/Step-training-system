@@ -114,7 +114,7 @@ import {
   setSubmittingGuard,
   clearAnalysisGuard,
 } from '../composables/useAnalysisJob.js'
-import { saveTrainingMode, getTrainingMode, saveCurrentJobId, getCurrentUserId, getCurrentSubjectId } from '../stores/storage.js'
+import { saveTrainingMode, getTrainingMode, saveCurrentJobId, getCurrentUserId, getCurrentSubjectId, setCurrentSubjectId } from '../stores/storage.js'
 
 const router = useRouter()
 const upload = useAnalysisUpload()
@@ -148,8 +148,22 @@ function disableLeaveGuard() {
 
 async function ensureUser() {
   // 从全局受试者状态读取，顶栏切换即生效
-  const subjectId = getCurrentSubjectId()
-  if (!subjectId) return false
+  let subjectId = getCurrentSubjectId()
+
+  // 如果没有选中受试者，自动拉取列表取第一个
+  if (!subjectId) {
+    try {
+      const listRes = await fetch('/api/v1/subjects?limit=1')
+      if (!listRes.ok) return false
+      const listPayload = await listRes.json().catch(() => ({}))
+      const first = (listPayload.items || [])[0]
+      if (!first) return false
+      subjectId = first.id
+      setCurrentSubjectId(subjectId)
+    } catch {
+      return false
+    }
+  }
 
   try {
     const response = await fetch(`/api/users/${encodeURIComponent(subjectId)}`)
