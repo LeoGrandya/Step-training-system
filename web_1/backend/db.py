@@ -91,10 +91,12 @@ def init_database(app) -> None:
         with app.app_context():
             db.create_all()
 
-            # Schema migrations for new columns (SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS)
-            _migrate_add_column_if_missing("kinematics_datasets", "synced_left_path", "VARCHAR(512)")
-            _migrate_add_column_if_missing("kinematics_datasets", "synced_right_path", "VARCHAR(512)")
+    # Schema migrations for new columns (SQLite + MySQL)
+    with app.app_context():
+        _migrate_add_column_if_missing("kinematics_datasets", "synced_left_path", "VARCHAR(512)")
+        _migrate_add_column_if_missing("kinematics_datasets", "synced_right_path", "VARCHAR(512)")
 
+    if _is_sqlite(uri):
         # One-time cleanup: deduplicate subjects (safe to run only on SQLite)
         cleanup_marker = db_path.parent / ".cleanup_subjects_done"
         if not cleanup_marker.exists():

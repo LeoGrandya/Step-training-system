@@ -147,23 +147,9 @@ function disableLeaveGuard() {
 }
 
 async function ensureUser() {
-  // 从全局受试者状态读取，顶栏切换即生效
+  // 优先使用菜单栏已选中的受试者（由 SiteNav 写入 localStorage）
   let subjectId = getCurrentSubjectId()
-
-  // 如果没有选中受试者，自动拉取列表取第一个
-  if (!subjectId) {
-    try {
-      const listRes = await fetch('/api/v1/subjects?limit=1')
-      if (!listRes.ok) return false
-      const listPayload = await listRes.json().catch(() => ({}))
-      const first = (listPayload.items || [])[0]
-      if (!first) return false
-      subjectId = first.id
-      setCurrentSubjectId(subjectId)
-    } catch {
-      return false
-    }
-  }
+  if (!subjectId) return false
 
   try {
     const response = await fetch(`/api/users/${encodeURIComponent(subjectId)}`)
@@ -258,6 +244,9 @@ onMounted(async () => {
   document.documentElement.dataset.pageReady = 'analysis'
   fetchUserName()
 
+  // 先注册监听，确保捕获 SiteNav 的初始 subject-changed 事件
+  window.addEventListener('subject-changed', onSubjectChanged)
+
   // 确保有可用用户（注册/登录），失败则阻断操作
   const ok = await ensureUser()
   if (!ok) {
@@ -265,11 +254,8 @@ onMounted(async () => {
     return
   }
 
-  // 恢复刷新前的活跃分析任务，避免页面重载后丢失进度
   const restored = await job.restoreActiveJobIfAny()
   if (!restored) job.reset()
-
-  window.addEventListener('subject-changed', onSubjectChanged)
 })
 
 async function onSubjectChanged(e) {
