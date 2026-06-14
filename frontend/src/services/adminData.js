@@ -177,7 +177,7 @@ export const RESOURCE_DEFINITIONS = [
     title: '运动学数据',
     endpoint: '/api/v1/kinematics-datasets',
     description: '分析完成的运动学结果，含受试者、步法、评分与同步视频播放。',
-    columns: ['subjectName', 'stepName', 'mode', 'profile', 'grade', 'leftVideoName', 'rightVideoName', 'syncedLeftVideoUrl', 'syncedRightVideoUrl', 'createdAt'],
+    columns: ['subjectName', 'stepName', 'mode', 'profile', 'grade', 'createdAt'],
     creatable: false,
     editable: false,
     deletable: false,

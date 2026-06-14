@@ -636,11 +636,32 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.data-management-video-cell {
-  display: block;
-  border-radius: 6px;
+.data-management-video-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.data-management-video-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.data-management-video-label {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  text-align: center;
+}
+
+.data-management-video-player {
+  width: 100%;
+  border-radius: 8px;
   background: #000;
-  max-width: 160px;
+  max-height: 340px;
 }
 
 .data-management-add-btn {

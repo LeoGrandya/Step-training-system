@@ -101,12 +101,17 @@
                 <td :colspan="activeResource.columns.length + 1">暂无数据</td>
               </tr>
               <tr v-for="item in items" v-else :key="item.id || item.jobId">
-                <td v-for="column in activeResource.columns" :key="column">
-                  <video v-if="isVideoUrlColumn(column) && item[column]" :src="item[column]" controls preload="none" width="160" class="data-management-video-cell" />
-                  <span v-else>{{ displayValue(item[column]) }}</span>
-                </td>
+                <td v-for="column in activeResource.columns" :key="column">{{ displayValue(item[column]) }}</td>
                 <td>
                   <div class="data-management-row-actions">
+                    <button
+                      v-if="activeResource.key === 'kinematics-datasets' && (item.syncedLeftVideoUrl || item.syncedRightVideoUrl)"
+                      type="button"
+                      class="secondary-button"
+                      @click="openVideoPlayer(item)"
+                    >
+                      查看视频
+                    </button>
                     <button
                       v-if="activeResource.editable !== false"
                       type="button"
@@ -342,6 +347,29 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 同步视频播放弹窗 -->
+    <Teleport to="body">
+      <div v-if="videoPlayer.show" class="data-management-modal" @click.self="videoPlayer.show = false">
+        <div class="data-management-modal__card" style="max-width:720px">
+          <div class="data-management-modal__head">
+            <h3>同步对齐视频 — {{ videoPlayer.subjectName }}</h3>
+            <button type="button" class="link-button" @click="videoPlayer.show = false" aria-label="关闭">✕</button>
+          </div>
+          <div class="data-management-video-grid">
+            <div v-if="videoPlayer.leftUrl" class="data-management-video-item">
+              <p class="data-management-video-label">左机位</p>
+              <video :src="videoPlayer.leftUrl" controls preload="metadata" class="data-management-video-player" />
+            </div>
+            <div v-if="videoPlayer.rightUrl" class="data-management-video-item">
+              <p class="data-management-video-label">右机位</p>
+              <video :src="videoPlayer.rightUrl" controls preload="metadata" class="data-management-video-player" />
+            </div>
+            <p v-if="!videoPlayer.leftUrl && !videoPlayer.rightUrl" style="color:#94a3b8;text-align:center;grid-column:1/-1">该记录暂无同步视频（分析发生于同步视频存储功能上线前）</p>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -385,6 +413,21 @@ const resultModal = reactive({
   _pendingAction: null,  // retry callback
   _onConfirm: null,      // confirm callback
 });
+
+// 视频播放弹窗
+const videoPlayer = reactive({
+  show: false,
+  leftUrl: '',
+  rightUrl: '',
+  subjectName: '',
+});
+
+function openVideoPlayer(item) {
+  videoPlayer.leftUrl = item.syncedLeftVideoUrl || '';
+  videoPlayer.rightUrl = item.syncedRightVideoUrl || '';
+  videoPlayer.subjectName = item.subjectName || '';
+  videoPlayer.show = true;
+}
 
 const activeResource = computed(() => resources.find((resource) => resource.key === activeKey.value) || resources[0]);
 const activeFilterFields = computed(() => activeResource.value.filterFields || []);
@@ -511,10 +554,6 @@ function buildPayload() {
     payload[field.key] = parseFieldValue(field, form[field.key]);
   }
   return payload;
-}
-
-function isVideoUrlColumn(column) {
-  return column.endsWith('VideoUrl');
 }
 
 function displayValue(value) {
