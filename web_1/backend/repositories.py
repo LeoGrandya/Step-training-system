@@ -1491,6 +1491,22 @@ def upsert_kinematics_dataset_for_job(
     return dataset.id
 
 
+def delete_kinematics_dataset(dataset_id: str) -> bool:
+    """删除运动学数据集（含帧指标），解除关联评估记录的引用。"""
+    dataset = KinematicsDataset.query.filter(KinematicsDataset.id == dataset_id).first()
+    if dataset is None:
+        return False
+    EvaluationRecord.query.filter(
+        EvaluationRecord.kinematics_dataset_id == dataset_id
+    ).update({"kinematics_dataset_id": None})
+    KinematicsFrameMetric.query.filter(
+        KinematicsFrameMetric.dataset_id == dataset_id
+    ).delete()
+    db.session.delete(dataset)
+    db.session.commit()
+    return True
+
+
 def _row_value(row: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         if key in row:

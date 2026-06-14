@@ -129,3 +129,11 @@ def register(bp: Blueprint) -> None:
             return json_err("video_file_missing", 404)
 
         return send_file(str(path), mimetype="video/mp4", conditional=True)
+
+    @bp.delete("/kinematics-datasets/<dataset_id>")
+    def delete_kinematics_dataset(dataset_id: str):
+        """删除运动学数据集及其帧指标。"""
+        ok = repo.delete_kinematics_dataset(dataset_id)
+        if not ok:
+            return json_err("not_found", 404)
+        return json_ok()

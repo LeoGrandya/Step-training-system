@@ -180,7 +180,6 @@ export const RESOURCE_DEFINITIONS = [
     columns: ['subjectName', 'stepName', 'mode', 'profile', 'grade', 'createdAt'],
     creatable: false,
     editable: false,
-    deletable: false,
     fields: [],
     filterFields: [selectField('subjectId', '受试者', { lookup: 'subjects' }), textField('jobId', '分析任务 ID')],
   },
