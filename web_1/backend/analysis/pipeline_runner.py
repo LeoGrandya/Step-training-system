@@ -27,6 +27,7 @@ from .pose3d_service import (
 from .report_persistence import upsert_report_for_job
 from .result_builder import build_chart_bundle_from_payload, build_result_payload, write_chart_bundle
 from .results_store import AnalysisResultStore
+from .data_validator import write_quality_report
 from ..repositories import upsert_kinematics_dataset_for_job
 
 _EXECUTOR = AnalysisExecutor()
@@ -576,6 +577,9 @@ def run_job_pipeline(
         )
         bundle = build_chart_bundle_from_payload(payload)
         chart_bundle_path = write_chart_bundle(store.report_dir(job_id), bundle)
+        # Write data quality report for frontend diagnostics
+        quality_path = write_quality_report(kin_dir, store.report_dir(job_id))
+        log(f"数据质量报告: {quality_path}")
         rec_done = store.get(job_id)
         if result_store is not None:
             result_id = result_store.save_result(
@@ -723,4 +727,5 @@ def ensure_report_json(job_id: str, store: jobs.JobStore) -> Path | None:
         report.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         bundle = build_chart_bundle_from_payload(payload)
         write_chart_bundle(report.parent, bundle)
+        write_quality_report(kin, report.parent)
     return report

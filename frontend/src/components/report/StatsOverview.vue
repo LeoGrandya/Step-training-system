@@ -5,10 +5,9 @@
       style="animation: glowPulse 3s ease-in-out infinite;">
       <div class="flex items-center justify-between mb-1">
         <span class="text-[11px] text-slate-400 font-medium tracking-wide">{{ item.title }}</span>
-        <span :class="item.trendUp ? 'text-sky-500' : 'text-rose-400'" class="text-[10px] font-tech">{{ item.trendUp ? '▲' : '▼' }} {{ item.compare }}</span>
+        <span :class="item.trendUp ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20'" class="text-[10px] px-1.5 py-0.5 rounded-full border font-tech">{{ item.label }}</span>
       </div>
       <div class="flex-1 min-h-0" :ref="el => setDonutRef(el, idx)" style="min-height:80px"></div>
-      <div class="text-center mt-1"><span class="text-[11px] text-slate-400">完成率</span></div>
     </div>
 
     <div v-for="(stat, sIdx) in textStats" :key="'s-' + sIdx"
@@ -44,6 +43,10 @@ const donutRefs = []
 const setDonutRef = (el, idx) => { if (el) donutRefs[idx] = el }
 const { initChart, disposeAll } = useECharts()
 
+function speedLabel(v) { if (v <= 0) return '无数据'; if (v >= 2.5) return '优秀'; if (v >= 2.0) return '良好'; return '待提升' }
+function symLabel(v) { if (v === 999 || v == null) return '无数据'; if (v <= 0.05) return '优秀'; if (v <= 0.10) return '良好'; return '待提升' }
+function activeLabel(v) { if (v <= 0) return '无数据'; if (v >= 80) return '专注'; if (v >= 60) return '正常'; return '偏低' }
+
 const donutMetrics = computed(() => {
   const summary = props.statsRaw?.summary || {}
   const derived = props.statsRaw?.derived || {}
@@ -51,11 +54,14 @@ const donutMetrics = computed(() => {
   const speed = summary.mean_com_speed_mps ?? 0
   const activeRatio = (quality.analysisActiveRatio ?? 0) * 100
   const asym = derived.clearance_asymmetry_peak_m ?? 999
-  const symScore = asym < 0.05 ? 92 : asym < 0.10 ? 78 : 60
+  const symVal = asym !== 999 && asym != null ? Math.max(0, Math.round((1 - Math.min(asym, 0.3) / 0.3) * 100)) : 0
   return [
-    { title: '移动速度指数', compare: `${Number(speed).toFixed(1)} m/s`, val: Math.min(95, Math.round(speed * 30)), trendUp: speed > 1.5 },
-    { title: '有效活动占比', compare: `${activeRatio.toFixed(0)}%`, val: Math.round(activeRatio), trendUp: activeRatio > 50 },
-    { title: '对称性评分', compare: `${symScore}分`, val: symScore, trendUp: symScore > 70 },
+    { title: '移动速度', label: speedLabel(speed), val: speed > 0 ? Math.min(95, Math.max(5, Math.round(speed * 30))) : 0,
+      centerText: speed > 0 ? `${speed.toFixed(1)}` : '-', centerUnit: 'm/s', trendUp: speed > 1.5 },
+    { title: '训练活跃度', label: activeLabel(activeRatio), val: Math.round(activeRatio),
+      centerText: activeRatio > 0 ? `${activeRatio.toFixed(0)}` : '-', centerUnit: '%', trendUp: activeRatio > 50 },
+    { title: '左右均衡度', label: symLabel(asym), val: symVal,
+      centerText: symVal > 0 ? `${symVal}` : '-', centerUnit: '分', trendUp: symVal > 70 },
   ]
 })
 
@@ -66,10 +72,12 @@ const textStats = computed(() => {
   const cycleCount = quality.cycleCount ?? 0
   const stepCount = props.statsRaw?.stepCount ?? 0
   const peakSpeed = summary.peak_com_speed_mps ?? derived?.com_speed_p95_mps ?? 0
+  const accel = derived.com_accel_abs_p95_mps2 ?? 0
+  const duration = derived.duration_s ?? summary.duration_s ?? 0
   return [
-    { label: '总移动周期', display: cycleCount ? String(cycleCount) : '-', change: '', isUp: true, barLength: Math.min(20, cycleCount * 2) },
-    { label: '总步数', display: stepCount ? String(stepCount) : '-', change: '', isUp: true, barLength: Math.min(20, Math.round(stepCount / 20)) },
-    { label: '峰值速度', display: peakSpeed ? `${Number(peakSpeed).toFixed(1)} m/s` : '-', change: '', isUp: true, barLength: Math.min(20, Math.round(peakSpeed * 7)) },
+    { label: '移动轮次', display: cycleCount > 0 ? `${cycleCount} 轮` : '暂无', isUp: cycleCount > 2, barLength: Math.min(20, Math.max(1, cycleCount)) },
+    { label: '总步数', display: stepCount > 0 ? `${stepCount} 步` : '暂无', isUp: stepCount > 5, barLength: Math.min(20, Math.max(1, Math.round(stepCount / 3))) },
+    { label: '峰值加速度', display: accel > 0 ? `${accel.toFixed(1)} m/s²` : '暂无', isUp: accel > 4, barLength: Math.min(20, Math.max(1, Math.round(accel))) },
   ]
 })
 
@@ -85,8 +93,8 @@ function renderDonuts() {
       series: [{
         type: 'pie', radius: ['75%', '92%'], silent: true,
         label: { show: true, position: 'center',
-          formatter: `{big|${m.val}}%\n{small|${m.title}}`,
-          rich: { big: { fontSize: 18, fontWeight: 'bold', color: '#0f172a', fontFamily: 'Orbitron', lineHeight: 24 }, small: { fontSize: 11, color: '#64748b', lineHeight: 14 } },
+          formatter: `{big|${m.centerText}}\n{small|${m.centerUnit}}`,
+          rich: { big: { fontSize: 22, fontWeight: 'bold', color: '#0f172a', fontFamily: 'Orbitron', lineHeight: 28 }, small: { fontSize: 10, color: '#64748b', lineHeight: 12 } },
         },
         labelLine: { show: false },
         data: [

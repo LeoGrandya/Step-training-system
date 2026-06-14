@@ -6,33 +6,44 @@
       <span class="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full ml-auto">运动医学</span>
     </h3>
     <p class="text-sm text-slate-400 leading-relaxed mb-3 border-l-2 border-pink-500/30 pl-2.5">膝关节活动范围最大（65°-155°），踝关节相对稳定。ROM雷达图显示左侧关节活动度略优于右侧。角速度峰值出现在蹬伸末期，着地瞬间角加速度提示存在冲击负荷。制动瞬间膝角在段3-4接近理想范围，建议加强右侧关节柔韧性与离心控制能力。</p>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      <!-- Row 1: 髋膝踝角度曲线 + ROM雷达图 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <!-- Row 1: 髋膝踝角度曲线 + ROM雷达图 + 角速度 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
-        <p class="text-sm text-slate-400 mb-1 font-medium">移动段 髋/膝/踝角度变化</p>
+        <p class="text-sm text-slate-400 mb-1 font-medium">髋/膝/踝角度变化</p>
         <div ref="angleRef" class="w-full h-56"></div>
       </div>
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">左右侧关节活动范围(ROM)对比</p>
-        <div ref="romRef" class="w-full h-56"></div>
+        <div ref="romRef" class="w-full h-56 aspect-square mx-auto max-w-[280px]"></div>
       </div>
-      <!-- Row 2: 角速度/角加速度 + 制动角度柱状图 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
-        <p class="text-sm text-slate-400 mb-1 font-medium">膝关节角速度与角加速度</p>
+        <p class="text-sm text-slate-400 mb-1 font-medium">膝关节角速度</p>
         <div ref="angularRef" class="w-full h-56"></div>
       </div>
+      <!-- Row 2: 力矩 + 功率 + 髋角 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
-        <p class="text-sm text-slate-400 mb-1 font-medium">制动变向瞬间关节角度对比</p>
-        <div ref="brakeRef" class="w-full h-56"></div>
+        <p class="text-sm text-slate-400 mb-1 font-medium">髋膝力矩时间序列</p>
+        <div ref="torqueRef" class="w-full h-56"></div>
+      </div>
+      <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
+        <p class="text-sm text-slate-400 mb-1 font-medium">髋膝功率时间序列</p>
+        <div ref="powerRef" class="w-full h-56"></div>
+      </div>
+      <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
+        <p class="text-sm text-slate-400 mb-1 font-medium">髋关节角度变化</p>
+        <div ref="hipRef" class="w-full h-56"></div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { tooltipTheme } from '../../utils/chartTheme.js'
+import ReportEmptyState from './ReportEmptyState.vue'
+
+const isDev = import.meta.env.DEV
 
 const props = defineProps({
   joint: Object,
@@ -46,8 +57,17 @@ const props = defineProps({
 const angleRef = ref(null)
 const romRef = ref(null)
 const angularRef = ref(null)
-const brakeRef = ref(null)
+const torqueRef = ref(null)
+const powerRef = ref(null)
+const hipRef = ref(null)
 const charts = []
+
+const hasJoint = computed(() => !!props.joint)
+const hasRom = computed(() => !!props.jointRomRadar)
+const hasAngVel = computed(() => !!props.jointAngVel)
+const hasTorque = computed(() => !!props.torqueChart)
+const hasPower = computed(() => !!props.powerChart)
+const hasHip = computed(() => !!props.hipAngleChart)
 
 function dg() { return { top: 22, bottom: 22, left: 46, right: 12 } }
 function da() { return { axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } } } }
@@ -136,22 +156,61 @@ function mockTorqueChart() {
 function renderCharts() {
   if (angleRef.value) {
     const c = echarts.init(angleRef.value)
-    c.setOption(props.joint || mockJoint(), true)
+    if (props.joint) c.setOption(props.joint, true)
+    else if (isDev) c.setOption(mockJoint(), true)
     charts.push(c)
   }
   if (romRef.value) {
     const c = echarts.init(romRef.value)
-    c.setOption(props.jointRomRadar || mockJointRomRadar(), true)
+    if (props.jointRomRadar) c.setOption(props.jointRomRadar, true)
+    else if (isDev) c.setOption(mockJointRomRadar(), true)
     charts.push(c)
   }
   if (angularRef.value) {
     const c = echarts.init(angularRef.value)
-    c.setOption(props.jointAngVel || mockJointAngVel(), true)
+    if (props.jointAngVel) c.setOption(props.jointAngVel, true)
+    else if (isDev) c.setOption(mockJointAngVel(), true)
     charts.push(c)
   }
-  if (brakeRef.value) {
-    const c = echarts.init(brakeRef.value)
-    c.setOption(props.torqueChart || mockTorqueChart(), true)
+  if (torqueRef.value) {
+    const c = echarts.init(torqueRef.value)
+    if (props.torqueChart) c.setOption(props.torqueChart, true)
+    else if (isDev) c.setOption(mockTorqueChart(), true)
+    charts.push(c)
+  }
+  if (powerRef.value) {
+    const c = echarts.init(powerRef.value)
+    if (props.powerChart) c.setOption(props.powerChart, true)
+    else if (isDev) {
+      // Reuse mockTorqueChart as a fallback visual for power
+      const mockPower = mockTorqueChart()
+      mockPower.yAxis.name = '功率(W)'
+      mockPower.series[0].name = '髋功率'
+      mockPower.series[1].name = '膝功率'
+      c.setOption(mockPower, true)
+    }
+    charts.push(c)
+  }
+  if (hipRef.value) {
+    const c = echarts.init(hipRef.value)
+    if (props.hipAngleChart) c.setOption(props.hipAngleChart, true)
+    else if (isDev) {
+      // Fallback: show a simplified hip angle chart
+      const T = Array.from({ length: 100 }, (_, i) => +(i).toFixed(0))
+      const lh = T.map(x => 90 + Math.sin(x * 0.06) * 25 + Math.cos(x * 0.04) * 10 + Math.random() * 3)
+      const rh = T.map(x => 88 + Math.sin(x * 0.06 + 0.5) * 22 + Math.cos(x * 0.04) * 12 + Math.random() * 3)
+      c.setOption({
+        tooltip: tooltipTheme(),
+        grid: dg(),
+        xAxis: { type: 'category', name: '标准化百分比(%)', nameTextStyle: { color: '#64748b', fontSize: 11 }, data: T, axisLabel: { color: '#475569', fontSize: 10, interval: 19 }, ...da() },
+        yAxis: { type: 'value', name: '关节角度(°)', nameTextStyle: { color: '#64748b', fontSize: 11 }, ...da() },
+        legend: { data: ['左髋', '右髋'], textStyle: { color: '#94a3b8', fontSize: 11 }, right: 0, top: 0 },
+        series: [
+          { name: '左髋', type: 'line', data: lh, smooth: true, symbol: 'none', lineStyle: { color: '#6366f1', width: 1.8 } },
+          { name: '右髋', type: 'line', data: rh, smooth: true, symbol: 'none', lineStyle: { color: '#f59e0b', width: 1.8 } },
+        ],
+      }, true)
+    }
     charts.push(c)
   }
 }

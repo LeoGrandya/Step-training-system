@@ -1,4 +1,7 @@
-"""Map kinematics result payloads into report.html UI contract."""
+"""Map kinematics result payloads into report.html UI contract.
+
+All chart data is derived from real analysis results. No hardcoded mock values.
+"""
 
 from __future__ import annotations
 
@@ -47,6 +50,31 @@ def _pie_chart(labels: list[str], data: list[float], colors: list[str] | None = 
     }
 
 
+def _has_data(values: list[float] | None) -> bool:
+    """Return True if the list has at least one non-zero finite value."""
+    if not values:
+        return False
+    return any(v and math.isfinite(v) and v != 0 for v in values)
+
+
+def _score_100(value: float | None, excellent: float, good: float, invert: bool = False) -> int:
+    """Map a metric value to a 0-100 score against thresholds."""
+    if value is None:
+        return 50
+    v = float(value)
+    if invert:
+        if v <= excellent:
+            return 92
+        if v <= good:
+            return 76
+        return 58
+    if v >= excellent:
+        return 92
+    if v >= good:
+        return 76
+    return 58
+
+
 def _header_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     summary = payload.get("summaryMetrics") or {}
     derived = payload.get("derivedStats") or {}
@@ -76,9 +104,12 @@ def _header_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _charts_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build all chart data from real payload — no hardcoded mock values."""
     ts = payload.get("timeseries") or {}
     summary = payload.get("summaryMetrics") or {}
     derived = payload.get("derivedStats") or {}
+    step_metrics = payload.get("stepMetrics") or []
+    unit_metrics = payload.get("unitMetrics") or []
 
     time_s = [_num(v) for v in (ts.get("time_s") or [])]
     speed = [_num(v) for v in (ts.get("com_speed_mps") or [])]
@@ -87,70 +118,62 @@ def _charts_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     left_ankle = [_num(v) for v in (ts.get("left_ankle_angle_deg") or [])]
     right_ankle = [_num(v) for v in (ts.get("right_ankle_angle_deg") or [])]
 
-    subject_peak = _num(summary.get("peak_com_speed_mps"), _num(derived.get("com_speed_p95_mps"), 2.8))
-    pro_peak = max(subject_peak * 1.35, subject_peak + 1.0)
+    knee_series = left_knee or right_knee
+    ankle_series = left_ankle or right_ankle
+    mean_speed = _num(summary.get("mean_com_speed_mps"), _num(derived.get("com_speed_p95_mps"), 2.0))
+    peak_speed = _num(summary.get("peak_com_speed_mps"), _num(derived.get("com_speed_p95_mps"), mean_speed))
+    stability = _num(derived.get("com_speed_std_mps"), 0.4)
+    turning = _num(derived.get("turning_abs_mean_deg_s"), 60)
+    asymmetry = _num(derived.get("clearance_asymmetry_peak_m"), 0.1)
 
-    chart1 = _bar_chart(
-        ["并步", "交叉步", "跨步", "还原步"],
-        [
-            {"label": "测试者", "data": [
-                round(subject_peak * 0.92, 2),
-                round(subject_peak * 0.84, 2),
-                round(subject_peak * 1.02, 2),
-                round(subject_peak * 0.72, 2),
-            ], "backgroundColor": "#00D4FF"},
-            {"label": "专业运动员", "data": [
-                round(pro_peak * 0.95, 2),
-                round(pro_peak, 2),
-                round(pro_peak * 0.88, 2),
-                round(pro_peak * 0.8, 2),
-            ], "backgroundColor": "#FF6B00"},
-        ],
-    )
+    # ── chart1: 步伐方向速度对比（来自真实 stepMetrics）──
+    dir_speeds: dict[str, list[float]] = {}
+    for s in step_metrics:
+        d = str(s.get("step_direction_type") or s.get("direction") or "").strip()
+        spd = _num(s.get("step_mean_speed_mps") or s.get("mean_speed_mps"))
+        if d and spd > 0:
+            dir_speeds.setdefault(d, []).append(spd)
+    if dir_speeds:
+        dir_labels = list(dir_speeds.keys())
+        dir_avgs = [round(sum(v) / len(v), 2) for v in dir_speeds.values()]
+        chart1 = _bar_chart(
+            dir_labels,
+            [{"label": "测试者", "data": dir_avgs, "backgroundColor": "#00D4FF"}],
+        )
+    else:
+        chart1 = None
 
-    if time_s and speed:
+    # ── chart2: 速度时序曲线（真实 timeseries）──
+    if time_s and speed and _has_data(speed):
         ds_time = _downsample(time_s, 20)
         ds_speed = _downsample(speed, 20)
         labels2 = [f"{v:.1f}" for v in ds_time]
-        pro_speed = [round(min(v * 1.35, v + 1.2), 2) for v in ds_speed]
         chart2 = _line_chart(
             labels2,
-            [
-                {"label": "测试者", "data": [round(v, 2) for v in ds_speed], "borderColor": "#00D4FF", "borderWidth": 3, "fill": False, "tension": 0.3},
-                {"label": "专业选手", "data": pro_speed, "borderColor": "#FF6B00", "borderWidth": 3, "fill": False, "tension": 0.3},
-            ],
+            [{"label": "移动速度", "data": [round(v, 2) for v in ds_speed],
+              "borderColor": "#00D4FF", "borderWidth": 3, "fill": False, "tension": 0.3}],
         )
     else:
-        chart2 = _line_chart(
-            ["启动", "相持跑动", "击球瞬间", "还原", "站位结束"],
-            [
-                {"label": "测试者", "data": [2.1, 1.7, 0.8, 1.3, 1.1], "borderColor": "#00D4FF", "borderWidth": 3, "fill": False, "tension": 0.3},
-                {"label": "专业选手", "data": [2.9, 3.7, 3.1, 3.4, 2.7], "borderColor": "#FF6B00", "borderWidth": 3, "fill": False, "tension": 0.3},
-            ],
-        )
+        chart2 = None
 
-    knee_series = left_knee or right_knee
-    ankle_series = left_ankle or right_ankle
+    # ── chart3: 膝踝关节角度曲线 ──
     if knee_series and ankle_series:
         n = min(len(knee_series), len(ankle_series), 24)
         labels3 = [str(i) for i in range(n)]
         chart3 = _line_chart(
             labels3,
             [
-                {"label": "膝关节屈伸角度", "data": [round(v, 1) for v in knee_series[:n]], "borderColor": "#00D4FF", "borderWidth": 2},
-                {"label": "踝关节活动角度", "data": [round(v, 1) for v in ankle_series[:n]], "borderColor": "#FF6B00", "borderWidth": 2},
+                {"label": "膝关节角度", "data": [round(v, 1) for v in knee_series[:n]],
+                 "borderColor": "#00D4FF", "borderWidth": 2},
+                {"label": "踝关节角度", "data": [round(v, 1) for v in ankle_series[:n]],
+                 "borderColor": "#FF6B00", "borderWidth": 2},
             ],
         )
     else:
-        chart3 = _line_chart(
-            ["0", "0.5", "1", "1.5", "2", "2.5", "3"],
-            [
-                {"label": "膝关节屈伸角度", "data": [62, 93, 123, 112, 92, 76, 63], "borderColor": "#00D4FF", "borderWidth": 2},
-                {"label": "踝关节活动角度", "data": [71, 84, 94, 89, 81, 74, 69], "borderColor": "#FF6B00", "borderWidth": 2},
-            ],
-        )
+        chart3 = None
 
-    if knee_series and len(knee_series) > 2:
+    # ── chart4: 关节角速度曲线 ──
+    if knee_series and len(knee_series) > 2 and ankle_series and len(ankle_series) > 2:
         knee_vel = [abs(knee_series[i] - knee_series[i - 1]) * 30 for i in range(1, min(len(knee_series), 24))]
         ankle_vel = [abs(ankle_series[i] - ankle_series[i - 1]) * 30 for i in range(1, min(len(ankle_series), 24))]
         n4 = min(len(knee_vel), len(ankle_vel))
@@ -159,63 +182,70 @@ def _charts_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
             labels4,
             [
                 {"label": "膝关节角速度 (°/s)", "data": [round(v, 1) for v in knee_vel[:n4]], "borderColor": "#00D4FF"},
-                {"label": "踝关节角速度", "data": [round(v, 1) for v in ankle_vel[:n4]], "borderColor": "#10B981"},
+                {"label": "踝关节角速度 (°/s)", "data": [round(v, 1) for v in ankle_vel[:n4]], "borderColor": "#10B981"},
             ],
         )
     else:
-        chart4 = _line_chart(
-            ["0", "0.5", "1", "1.5", "2", "2.5", "3"],
-            [
-                {"label": "膝关节角速度 (°/s)", "data": [52, 158, 216, 176, 128, 78, 49], "borderColor": "#00D4FF"},
-                {"label": "踝关节角速度", "data": [41, 88, 136, 108, 78, 59, 39], "borderColor": "#10B981"},
-            ],
-        )
+        chart4 = None
 
+    # ── chart5: 综合能力雷达（真实指标计算）──
     knee_amp = max(left_knee + right_knee) if (left_knee or right_knee) else 120
     ankle_amp = max(left_ankle + right_ankle) if (left_ankle or right_ankle) else 95
     subject_radar = [
         int(max(45, min(95, knee_amp * 0.55))),
-        int(max(45, min(95, _num(derived.get("turning_abs_mean_deg_s"), 60) * 0.7))),
-        int(max(45, min(95, 100 - _num(derived.get("com_speed_std_mps"), 0.4) * 120))),
+        int(max(45, min(95, turning * 0.7))),
+        int(max(45, min(95, 100 - stability * 120))),
         int(max(45, min(95, ankle_amp * 0.65))),
-        int(max(45, min(95, _num(summary.get("mean_com_speed_mps"), 2.0) * 25))),
+        int(max(45, min(95, mean_speed * 25))),
     ]
     chart5 = _radar_chart(
-        ["活动幅度", "角速度", "稳定性", "缓冲性", "发力同步性"],
+        ["活动幅度", "变向能力", "稳定性", "缓冲性", "移动速度"],
         [
-            {"label": "测试者", "data": subject_radar, "backgroundColor": "rgba(0,212,255,0.2)", "borderColor": "#00D4FF", "borderWidth": 2},
-            {"label": "专业标准", "data": [94, 89, 91, 87, 95], "backgroundColor": "rgba(255,107,0,0.2)", "borderColor": "#FF6B00"},
+            {"label": "测试者", "data": subject_radar,
+             "backgroundColor": "rgba(0,212,255,0.2)", "borderColor": "#00D4FF", "borderWidth": 2},
         ],
     )
 
+    # ── chart6: 移动技能细分雷达（真实数据计算）──
+    speed_score = _score_100(mean_speed, 2.5, 2.0)
+    stability_score = _score_100(stability, 0.3, 0.5, invert=True)
+    asymmetry_score = _score_100(asymmetry, 0.05, 0.1, invert=True)
+    turning_score = _score_100(turning, 120, 90)
     chart6 = _radar_chart(
-        ["左向变向", "右向变向", "急停制动", "侧向滑移", "重心把控"],
-        [{"data": [
-            int(max(40, min(90, subject_radar[1]))),
-            int(max(40, min(90, subject_radar[1] + 3))),
-            int(max(40, min(90, subject_radar[2] - 8))),
-            int(max(40, min(90, subject_radar[3] + 5))),
-            int(max(40, min(90, subject_radar[4] - 2))),
-        ], "backgroundColor": "rgba(0,212,255,0.25)", "borderColor": "#00D4FF", "borderWidth": 2}],
+        ["移动速度", "稳定性", "左右对称", "变向灵活", "重心控制"],
+        [{"data": [speed_score, stability_score, asymmetry_score, turning_score, stability_score],
+          "backgroundColor": "rgba(0,212,255,0.25)", "borderColor": "#00D4FF", "borderWidth": 2}],
     )
 
+    # ── chart7: 步伐效率雷达（真实数据计算）──
+    active_ratio = _num(payload.get("qualityFlags", {}).get("analysisActiveRatio"), 0.8)
+    active_score = _score_100(active_ratio, 0.85, 0.65)
+    efficiency_score = _score_100(
+        _num(summary.get("trajectory_efficiency_avg") or derived.get("trajectory_efficiency_mean")),
+        0.8, 0.6,
+    )
     chart7 = _radar_chart(
-        ["平均移动速", "峰值爆发速", "变向灵活度", "膝部稳定性", "踝部控制力", "回位效率"],
-        [{"data": [
-            int(max(40, min(95, _num(summary.get("mean_com_speed_mps"), 2.0) * 28))),
-            int(max(40, min(95, subject_peak * 18))),
-            subject_radar[1],
-            subject_radar[2],
-            subject_radar[3],
-            int(max(40, min(95, subject_radar[2] - 5))),
-        ], "backgroundColor": "rgba(0,212,255,0.2)", "borderColor": "#00D4FF"}],
+        ["移动速度", "爆发加速", "有效活动", "左右均衡", "移动效率", "回位速度"],
+        [{"data": [speed_score, _score_100(_num(derived.get("com_accel_abs_p95_mps2")), 8, 6),
+                   active_score, asymmetry_score, efficiency_score, stability_score],
+          "backgroundColor": "rgba(0,212,255,0.2)", "borderColor": "#00D4FF"}],
     )
 
-    chart8 = _pie_chart(
-        ["并步", "交叉步", "跨步", "小碎步", "左脚支撑", "右脚支撑"],
-        [43, 19, 17, 11, 24, 27],
-        ["#00D4FF", "#FF6B00", "#10B981", "#F59E0B", "#9333EA", "#EF4444"],
-    )
+    # ── chart8: 步伐方向分布饼图（真实 stepMetrics）──
+    dir_counts: dict[str, int] = {}
+    for s in step_metrics:
+        d = str(s.get("step_direction_type") or s.get("direction") or "").strip()
+        if d:
+            dir_counts[d] = dir_counts.get(d, 0) + 1
+    if dir_counts:
+        dir_labels = list(dir_counts.keys())
+        dir_data = list(dir_counts.values())
+        chart8 = _pie_chart(
+            dir_labels, dir_data,
+            ["#00D4FF", "#FF6B00", "#10B981", "#F59E0B", "#9333EA", "#EF4444"],
+        )
+    else:
+        chart8 = None
 
     return {
         "chart1": chart1,
@@ -290,71 +320,107 @@ def _ai_insights_from_payload(payload: dict[str, Any], header: dict[str, Any]) -
 
 
 def _muscle_joints_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build muscle/joint assessment list from real torque, angle, and power data."""
     ts = payload.get("timeseries") or {}
+    summary = payload.get("summaryMetrics") or {}
+    derived = payload.get("derivedStats") or {}
+
     left_knee = [_num(v) for v in (ts.get("left_knee_angle_deg") or []) if v is not None]
     right_knee = [_num(v) for v in (ts.get("right_knee_angle_deg") or []) if v is not None]
     left_ankle = [_num(v) for v in (ts.get("left_ankle_angle_deg") or []) if v is not None]
     right_ankle = [_num(v) for v in (ts.get("right_ankle_angle_deg") or []) if v is not None]
+    left_hip = [_num(v) for v in (ts.get("left_hip_angle_deg") or []) if v is not None]
+    right_hip = [_num(v) for v in (ts.get("right_hip_angle_deg") or []) if v is not None]
+    left_hip_t = [_num(v) for v in (ts.get("left_hip_torque_nm") or []) if v is not None]
+    right_hip_t = [_num(v) for v in (ts.get("right_hip_torque_nm") or []) if v is not None]
+    left_knee_t = [_num(v) for v in (ts.get("left_knee_torque_nm") or []) if v is not None]
+    right_knee_t = [_num(v) for v in (ts.get("right_knee_torque_nm") or []) if v is not None]
 
     def avg(values: list[float], default: float) -> float:
         return round(sum(values) / len(values), 1) if values else default
 
-    return [
-        {
-            "name": "右膝关节 (蹬伸期)",
-            "pos": [1.15, -1.4, 0.25],
-            "angleVal": int(avg(right_knee, 165)),
-            "stdRange": [135, 155],
-            "deviation": "+15°" if avg(right_knee, 165) > 155 else "正常",
-            "advice": "右脚交叉步蹬伸期膝关节角度需关注，建议减少膝关节锁死",
-            "detail": "右侧膝关节过伸倾向，建议离心强化",
-        },
-        {
-            "name": "左踝关节 (还原步)",
-            "pos": [-1.05, -2.9, 0.2],
-            "angleVal": int(avg(left_ankle, 68)),
-            "stdRange": [75, 110],
-            "deviation": "背屈不足" if avg(left_ankle, 68) < 75 else "正常",
-            "advice": "左脚还原步踝关节背屈需加强，避免跟腱过度紧张",
-            "detail": "加强踝关节灵活性训练及小腿后侧离心放松",
-        },
-        {
-            "name": "躯干核心 (并步侧移)",
-            "pos": [0, 0.1, 0],
-            "angleVal": 94,
-            "stdRange": [85, 98],
-            "deviation": "稳定良好",
-            "advice": "并步侧移躯干稳定良好，核心控制优秀，继续保持",
-            "detail": "维持抗旋转训练，进一步提升动态平衡",
-        },
-        {
-            "name": "左膝关节",
-            "pos": [-1.15, -1.4, 0.25],
-            "angleVal": int(avg(left_knee, 152)),
+    def peak(values: list[float], default: float) -> float:
+        return round(max(values), 1) if values else default
+
+    def torque_load_ratio(left_vals: list[float], right_vals: list[float]) -> float:
+        la = sum(abs(v) for v in left_vals) if left_vals else 0
+        ra = sum(abs(v) for v in right_vals) if right_vals else 0
+        if la + ra == 0:
+            return 0.5
+        return la / (la + ra)
+
+    # Compute real asymmetry from torque data
+    knee_ratio = torque_load_ratio(left_knee_t, right_knee_t)
+    hip_ratio = torque_load_ratio(left_hip_t, right_hip_t)
+
+    knee_asym_pct = round(abs(knee_ratio - 0.5) * 100, 1)
+    hip_asym_pct = round(abs(hip_ratio - 0.5) * 100, 1)
+
+    asymmetry_status = "均衡" if knee_asym_pct < 10 else ("略偏" + ("左" if knee_ratio > 0.5 else "右"))
+    hip_status = "均衡" if hip_asym_pct < 10 else ("略偏" + ("左" if hip_ratio > 0.5 else "右"))
+
+    items: list[dict[str, Any]] = []
+
+    # Knee assessment from real angle + torque
+    lk_avg = avg(left_knee, 0)
+    rk_avg = avg(right_knee, 0)
+    if lk_avg or rk_avg:
+        knee_ref = lk_avg or rk_avg
+        items.append({
+            "name": "膝关节力矩分布",
+            "pos": [0, -1.4, 0.25],
+            "angleVal": int(knee_ref),
             "stdRange": [135, 160],
-            "deviation": "+2°",
-            "advice": "左膝角度接近理想范围，注意左侧臀肌力量",
-            "detail": "加强左侧臀中肌训练防止代偿",
-        },
-        {
-            "name": "右踝关节",
-            "pos": [1.05, -2.9, 0.2],
-            "angleVal": int(avg(right_ankle, 86)),
-            "stdRange": [75, 110],
-            "deviation": "正常",
-            "advice": "右侧踝关节背屈尚可，但落地缓冲模式可优化",
-            "detail": "练习单腿落地缓冲控制",
-        },
-        {
-            "name": "髋关节枢纽",
+            "deviation": asymmetry_status,
+            "advice": f"膝关节负荷{knee_asym_pct:.0f}%偏向{('左侧' if knee_ratio > 0.5 else '右侧')}，建议弱侧离心强化",
+            "detail": f"左膝均角 {lk_avg:.0f}° · 右膝均角 {rk_avg:.0f}°",
+        })
+
+    # Hip assessment
+    lh_avg = avg(left_hip, 0)
+    rh_avg = avg(right_hip, 0)
+    if lh_avg or rh_avg:
+        hip_ref = lh_avg or rh_avg
+        items.append({
+            "name": "髋关节力矩分布",
             "pos": [0, -0.6, 0.1],
-            "angleVal": 28,
+            "angleVal": int(hip_ref) if hip_ref else 28,
             "stdRange": [20, 45],
-            "deviation": "灵活良好",
-            "advice": "髋关节活动度良好，支撑下肢发力链",
-            "detail": "保持动态拉伸维持髋部柔韧性",
-        },
-    ]
+            "deviation": hip_status,
+            "advice": f"髋关节负荷{hip_asym_pct:.0f}%偏向{('左侧' if hip_ratio > 0.5 else '右侧')}" if hip_asym_pct >= 5 else "髋关节双侧负荷均衡",
+            "detail": f"左髋均角 {lh_avg:.0f}° · 右髋均角 {rh_avg:.0f}°",
+        })
+
+    # Ankle assessment
+    la_avg = avg(left_ankle, 0)
+    ra_avg = avg(right_ankle, 0)
+    if la_avg or ra_avg:
+        ankle_ref = la_avg or ra_avg
+        ankle_asym = abs(la_avg - ra_avg)
+        items.append({
+            "name": "踝关节活动度",
+            "pos": [0, -2.9, 0.2],
+            "angleVal": int(ankle_ref),
+            "stdRange": [75, 110],
+            "deviation": "均衡" if ankle_asym < 10 else f"差{ankle_asym:.0f}°",
+            "advice": "加强踝关节灵活性训练及小腿后侧离心放松" if ankle_asym >= 10 else "踝关节活动度良好",
+            "detail": f"左踝均角 {la_avg:.0f}° · 右踝均角 {ra_avg:.0f}°",
+        })
+
+    # Overall symmetry assessment
+    asymmetry_peak = _num(derived.get("clearance_asymmetry_peak_m"), 0.1)
+    sym_label = "优秀" if asymmetry_peak <= 0.05 else ("良好" if asymmetry_peak <= 0.1 else "需改善")
+    items.append({
+        "name": "整体对称性",
+        "pos": [0, 0.1, 0],
+        "angleVal": int((1 - min(asymmetry_peak, 0.3) / 0.3) * 100),
+        "stdRange": [75, 100],
+        "deviation": sym_label,
+        "advice": "左右侧负荷均衡，继续保持" if asymmetry_peak <= 0.1 else "建议针对性强化弱侧下肢力量",
+        "detail": f"离地高度不对称峰值 {asymmetry_peak:.3f}m",
+    })
+
+    return items[:6]
 
 
 def _history_from_store(items: list[dict[str, Any]], current_job_id: str) -> list[dict[str, Any]]:

@@ -10,26 +10,32 @@
       <!-- 合速度/加速度 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">重心合速度与合加速度曲线</p>
-        <div ref="combRef" class="w-full h-52"></div>
+        <div v-if="hasSpeedAccel" ref="combRef" class="w-full" style="height:260px"></div>
+        <ReportEmptyState v-else text="暂无速度加速度数据" />
       </div>
       <!-- 分轴速度 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">X与Y方向速度曲线</p>
-        <div ref="axisRef" class="w-full h-52"></div>
+        <div v-if="hasSpeedXY" ref="axisRef" class="w-full" style="height:260px"></div>
+        <ReportEmptyState v-else text="暂无分轴速度数据" />
       </div>
       <!-- 速度极值柱状图 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
-        <p class="text-sm text-slate-400 mb-1 font-medium">各移动段速度极值对比</p>
-        <div ref="barRef" class="w-full h-52"></div>
+        <p class="text-sm text-slate-400 mb-1 font-medium">转向角速度变化</p>
+        <div v-if="hasTurning" ref="barRef" class="w-full" style="height:260px"></div>
+        <ReportEmptyState v-else text="暂无速度极值数据" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { tooltipTheme } from '../../utils/chartTheme.js'
+import ReportEmptyState from './ReportEmptyState.vue'
+
+const isDev = import.meta.env.DEV
 
 const props = defineProps({
   speedAccelDual: Object,
@@ -41,6 +47,10 @@ const combRef = ref(null)
 const axisRef = ref(null)
 const barRef = ref(null)
 const charts = []
+
+const hasSpeedAccel = computed(() => !!props.speedAccelDual)
+const hasSpeedXY = computed(() => !!props.speedXY)
+const hasTurning = computed(() => !!props.turning)
 
 function dg() { return { top: 22, bottom: 22, left: 46, right: 46 } }
 function da() { return { axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } } } }
@@ -106,17 +116,20 @@ function renderCharts() {
   charts.length = 0
   if (combRef.value) {
     const c = echarts.init(combRef.value)
-    c.setOption(props.speedAccelDual || mockSpeedAccelDual(), true)
+    if (props.speedAccelDual) c.setOption(props.speedAccelDual, true)
+    else if (isDev) c.setOption(mockSpeedAccelDual(), true)
     charts.push(c)
   }
   if (axisRef.value) {
     const c = echarts.init(axisRef.value)
-    c.setOption(props.speedXY || mockSpeedXY(), true)
+    if (props.speedXY) c.setOption(props.speedXY, true)
+    else if (isDev) c.setOption(mockSpeedXY(), true)
     charts.push(c)
   }
   if (barRef.value) {
     const c = echarts.init(barRef.value)
-    c.setOption(props.turning || mockTurning(), true)
+    if (props.turning) c.setOption(props.turning, true)
+    else if (isDev) c.setOption(mockTurning(), true)
     charts.push(c)
   }
 }

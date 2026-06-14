@@ -10,21 +10,26 @@
       <!-- 悬空时间与高度散点图 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">悬空时间 vs 悬空高度</p>
-        <div ref="scatterRef" class="w-full h-56"></div>
+        <div v-if="hasAirborne" ref="scatterRef" class="w-full h-56"></div>
+        <ReportEmptyState v-else text="暂无腾空数据" />
       </div>
       <!-- 足底高度曲线 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">足底高度曲线及腾空区间</p>
-        <div ref="heightRef" class="w-full h-56"></div>
+        <div v-if="hasFootHeight" ref="heightRef" class="w-full h-56"></div>
+        <ReportEmptyState v-else text="暂无足底高度数据" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { tooltipTheme } from '../../utils/chartTheme.js'
+import ReportEmptyState from './ReportEmptyState.vue'
+
+const isDev = import.meta.env.DEV
 
 const props = defineProps({
   airborne: Object,
@@ -34,6 +39,9 @@ const props = defineProps({
 const scatterRef = ref(null)
 const heightRef = ref(null)
 const charts = []
+
+const hasAirborne = computed(() => !!props.airborne)
+const hasFootHeight = computed(() => !!props.footHeight)
 
 function dg() { return { top: 18, bottom: 22, left: 46, right: 10 } }
 function da() { return { axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } } } }
@@ -82,12 +90,14 @@ function renderCharts() {
   charts.length = 0
   if (scatterRef.value) {
     const c = echarts.init(scatterRef.value)
-    c.setOption(props.airborne || mockAirborne(), true)
+    if (props.airborne) c.setOption(props.airborne, true)
+    else if (isDev) c.setOption(mockAirborne(), true)
     charts.push(c)
   }
   if (heightRef.value) {
     const c = echarts.init(heightRef.value)
-    c.setOption(props.footHeight || mockFootHeight(), true)
+    if (props.footHeight) c.setOption(props.footHeight, true)
+    else if (isDev) c.setOption(mockFootHeight(), true)
     charts.push(c)
   }
 }

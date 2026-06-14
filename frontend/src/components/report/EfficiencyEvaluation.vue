@@ -8,27 +8,23 @@
     <p class="text-sm text-slate-400 leading-relaxed mb-3 border-l-2 border-amber-500/30 pl-2.5">KLI指数大部分时段低于0.6安全阈值，DSO在50%-80%区间波动。包络线面积峰值出现在大跨步动作时，步伐3的bq值与步幅耗能比均较优。DTW热力图验证了段间速度模式差异，膝关节承担主要做功（左42%/右44%），建议提升髋关节发力参与度以优化能耗分布。</p>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2 flex flex-col">
-        <p class="text-sm text-slate-400 mb-1 font-medium">KLI与DSO趋势及风险帧</p>
+        <p class="text-sm text-slate-400 mb-1 font-medium">KLI与DSO趋势</p>
         <div ref="kliRef" class="w-full flex-1 min-h-[160px]"></div>
       </div>
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2 flex flex-col">
-        <p class="text-sm text-slate-400 mb-1 font-medium">动态包络线面积与翼展比</p>
+        <p class="text-sm text-slate-400 mb-1 font-medium">包络线面积与翼展比</p>
         <div ref="envRef" class="w-full flex-1 min-h-[160px]"></div>
       </div>
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2 flex flex-col">
-        <p class="text-sm text-slate-400 mb-1 font-medium">不同步伐发力效率对比</p>
+        <p class="text-sm text-slate-400 mb-1 font-medium">步伐发力效率对比</p>
         <div ref="effRef" class="w-full flex-1 min-h-[160px]"></div>
       </div>
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2 flex flex-col">
-        <p class="text-sm text-slate-400 mb-1 font-medium">质心轨迹平滑度对比</p>
-        <div ref="smRef" class="w-full flex-1 min-h-[160px]"></div>
-      </div>
-      <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2 flex flex-col">
-        <p class="text-sm text-slate-400 mb-1 font-medium">移动速度曲线DTW相似度热力图</p>
+        <p class="text-sm text-slate-400 mb-1 font-medium">速度曲线相似度热力图</p>
         <div ref="dtwRef" class="w-full flex-1 min-h-[160px]"></div>
       </div>
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2 flex flex-col">
-        <p class="text-sm text-slate-400 mb-1 font-medium">下肢关节能耗占比（左/右侧）</p>
+        <p class="text-sm text-slate-400 mb-1 font-medium">下肢关节能耗占比</p>
         <div ref="pieRef" class="w-full flex-1 min-h-[160px]"></div>
       </div>
     </div>
@@ -36,9 +32,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { tooltipTheme } from '../../utils/chartTheme.js'
+import ReportEmptyState from './ReportEmptyState.vue'
+
+const isDev = import.meta.env.DEV
 
 const props = defineProps({
   assessments: { type: Object, default: () => ({}) },
@@ -52,10 +51,15 @@ const props = defineProps({
 const kliRef = ref(null)
 const envRef = ref(null)
 const effRef = ref(null)
-const smRef = ref(null)
 const dtwRef = ref(null)
 const pieRef = ref(null)
 const charts = []
+
+const hasEfficiency = computed(() => !!props.efficiency)
+const hasEfficiencyBars = computed(() => !!props.efficiencyBars)
+const hasStepBars = computed(() => !!props.stepEfficiencyBars)
+const hasDtw = computed(() => !!props.dtwHeatmap)
+const hasEnergy = computed(() => !!props.energyBars)
 
 const entries = computed(() => Object.entries(props.assessments))
 
@@ -123,17 +127,6 @@ function mockStepEfficiencyBars() {
   }
 }
 
-function mockAssessments() {
-  const steps6 = ['1', '2', '3', '4', '5', '6']
-  return {
-    tooltip: tooltipTheme(),
-    grid: ds(),
-    xAxis: { type: 'category', data: steps6, axisLabel: { color: '#94a3b8', fontSize: 10 }, ...db() },
-    yAxis: { type: 'value', name: '平滑度(m/J)', nameTextStyle: { color: '#64748b', fontSize: 10 }, ...db() },
-    series: [{ type: 'bar', data: steps6.map(() => +(0.4 + Math.random() * 0.5).toFixed(3)), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#6366f1' }, { offset: 1, color: '#a78bfa' }]), borderRadius: [3, 3, 0, 0] }, barWidth: '40%' }]
-  }
-}
-
 function mockDtwHeatmap() {
   const n = 8
   const hm = []
@@ -162,32 +155,32 @@ function mockEnergyBars() {
 function renderCharts() {
   if (kliRef.value) {
     const c = echarts.init(kliRef.value)
-    c.setOption(props.efficiency || mockEfficiency(), true)
+    if (props.efficiency) c.setOption(props.efficiency, true)
+    else if (isDev) c.setOption(mockEfficiency(), true)
     charts.push(c)
   }
   if (envRef.value) {
     const c = echarts.init(envRef.value)
-    c.setOption(props.efficiencyBars || mockEfficiencyBars(), true)
+    if (props.efficiencyBars) c.setOption(props.efficiencyBars, true)
+    else if (isDev) c.setOption(mockEfficiencyBars(), true)
     charts.push(c)
   }
   if (effRef.value) {
     const c = echarts.init(effRef.value)
-    c.setOption(props.stepEfficiencyBars || mockStepEfficiencyBars(), true)
-    charts.push(c)
-  }
-  if (smRef.value) {
-    const c = echarts.init(smRef.value)
-    c.setOption(mockAssessments(), true)
+    if (props.stepEfficiencyBars) c.setOption(props.stepEfficiencyBars, true)
+    else if (isDev) c.setOption(mockStepEfficiencyBars(), true)
     charts.push(c)
   }
   if (dtwRef.value) {
     const c = echarts.init(dtwRef.value)
-    c.setOption(props.dtwHeatmap || mockDtwHeatmap(), true)
+    if (props.dtwHeatmap) c.setOption(props.dtwHeatmap, true)
+    else if (isDev) c.setOption(mockDtwHeatmap(), true)
     charts.push(c)
   }
   if (pieRef.value) {
     const c = echarts.init(pieRef.value)
-    c.setOption(props.energyBars || mockEnergyBars(), true)
+    if (props.energyBars) c.setOption(props.energyBars, true)
+    else if (isDev) c.setOption(mockEnergyBars(), true)
     charts.push(c)
   }
 }

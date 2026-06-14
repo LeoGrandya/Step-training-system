@@ -149,6 +149,21 @@ function disableLeaveGuard() {
 async function ensureUser() {
   // 优先使用菜单栏已选中的受试者（由 SiteNav 写入 localStorage）
   let subjectId = getCurrentSubjectId()
+
+  // 兜底：如果菜单栏尚未加载完成（竞态），自行获取受试者列表
+  if (!subjectId) {
+    try {
+      const res = await fetch('/api/v1/subjects?limit=1')
+      const payload = await res.json().catch(() => ({}))
+      const items = payload.items || []
+      if (items.length) {
+        subjectId = items[0].id
+        setCurrentSubjectId(subjectId)
+        window.dispatchEvent(new CustomEvent('subject-changed', { detail: items[0] }))
+      }
+    } catch { /* 网络失败继续往下，由 !subjectId 返回 false */ }
+  }
+
   if (!subjectId) return false
 
   try {
@@ -265,6 +280,7 @@ async function onSubjectChanged(e) {
     currentUserName.value = sub.displayName || sub.name || ''
     window.sessionStorage.setItem('pp-current-user', JSON.stringify(sub))
     setCurrentSubjectId(sub.id)
+    pageError.value = ''  // 清除之前因竞态导致的错误状态
   }
   leftFile.value = null
   rightFile.value = null

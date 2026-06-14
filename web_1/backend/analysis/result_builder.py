@@ -473,6 +473,7 @@ def build_chart_bundle_from_payload(
             "qualityFlags": payload.get("qualityFlags") or {},
             "kpiAssessments": payload.get("kpiAssessments") or {},
             "downloads": payload.get("downloads") or {},
+            "dataAvailability": payload.get("dataAvailability") or {},
         }
     )
 
@@ -563,6 +564,29 @@ def build_result_payload(*, job_id: str, kinematics_dir: Path) -> dict[str, Any]
     cycle_count = quality_flags.get("cycleCount", 0)
     timeseries_data["cycle_indices"] = _cycle_indices(frame_df, cycle_count)
 
+    # Build data availability summary so frontend knows which sections have data
+    step_records = _table_records(kinematics_dir / "step_metrics.csv") if step_csv.exists() else []
+    unit_records = _table_records(kinematics_dir / "unit_metrics.csv") if unit_csv.exists() else []
+    data_availability = {
+        "frameCount": int(len(frame_df)),
+        "cycleCount": int(cycle_count),
+        "stepCount": len(step_records),
+        "unitCount": len(unit_records),
+        "hasSpeed": "com_speed_mps" in frame_df.columns if not frame_df.empty else False,
+        "hasAcceleration": "com_acceleration_mps2" in frame_df.columns if not frame_df.empty else False,
+        "hasTurning": "turning_speed_deg_s" in frame_df.columns if not frame_df.empty else False,
+        "hasClearance": "left_clearance_m" in frame_df.columns if not frame_df.empty else False,
+        "hasJointAngles": "left_knee_angle_deg" in frame_df.columns if not frame_df.empty else False,
+        "hasTorque": "left_hip_torque_nm" in frame_df.columns if not frame_df.empty else False,
+        "hasPower": "left_hip_power_w" in frame_df.columns if not frame_df.empty else False,
+        "hasHipAngles": "left_hip_angle_deg" in frame_df.columns if not frame_df.empty else False,
+        "hasSteps": len(step_records) > 0,
+        "hasUnits": len(unit_records) > 0,
+        "hasComCell": "com_cell" in frame_df.columns if not frame_df.empty else False,
+        "hasSupportState": "left_support_state" in frame_df.columns if not frame_df.empty else False,
+        "hasAirborneEvents": bool((kinematics_dir / "腾空参数" / "02_腾空事件表.xlsx").exists()),
+    }
+
     payload: dict[str, Any] = {
         "ok": True,
         "jobId": job_id,
@@ -572,8 +596,9 @@ def build_result_payload(*, job_id: str, kinematics_dir: Path) -> dict[str, Any]
         "qualityFlags": quality_flags,
         "kpiAssessments": _kpi_assessments(summary_metrics, derived_stats),
         "timeseries": timeseries_data,
-        "stepMetrics": _table_records(kinematics_dir / "step_metrics.csv") if step_csv.exists() else [],
-        "unitMetrics": _table_records(kinematics_dir / "unit_metrics.csv") if unit_csv.exists() else [],
+        "stepMetrics": step_records,
+        "unitMetrics": unit_records,
+        "dataAvailability": data_availability,
         "downloads": {
             "frame_metrics_csv": f"/api/analysis/jobs/{job_id}/artifacts/frame_metrics.csv" if frame_csv.exists() else None,
             "session_summary_csv": f"/api/analysis/jobs/{job_id}/artifacts/session_summary.csv" if session_csv.exists() else None,

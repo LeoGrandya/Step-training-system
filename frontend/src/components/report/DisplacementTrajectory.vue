@@ -10,26 +10,32 @@
       <!-- 重心运动轨迹热力图 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">重心运动轨迹（速度热力图）</p>
-        <div ref="trajRef" class="w-full h-52"></div>
+        <div v-if="hasDisplacement" ref="trajRef" class="w-full" style="height:260px"></div>
+        <ReportEmptyState v-else text="暂无轨迹数据" />
       </div>
       <!-- X/Y位移分解 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">X与Y方向位移分解</p>
-        <div ref="xyRef" class="w-full h-52"></div>
+        <div v-if="hasDisplacementXY" ref="xyRef" class="w-full" style="height:260px"></div>
+        <ReportEmptyState v-else text="暂无位移分解数据" />
       </div>
       <!-- 累计距离曲线 -->
       <div class="bg-sky-50 rounded-lg border border-slate-200/60 p-2">
         <p class="text-sm text-slate-400 mb-1 font-medium">各部位累计移动距离</p>
-        <div ref="cumRef" class="w-full h-52"></div>
+        <div v-if="hasCumulativeDist" ref="cumRef" class="w-full" style="height:260px"></div>
+        <ReportEmptyState v-else text="暂无累计距离数据" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { tooltipTheme } from '../../utils/chartTheme.js'
+import ReportEmptyState from './ReportEmptyState.vue'
+
+const isDev = import.meta.env.DEV
 
 const props = defineProps({
   displacement: Object,
@@ -41,6 +47,10 @@ const trajRef = ref(null)
 const xyRef = ref(null)
 const cumRef = ref(null)
 const charts = []
+
+const hasDisplacement = computed(() => !!props.displacement)
+const hasDisplacementXY = computed(() => !!props.displacementXY)
+const hasCumulativeDist = computed(() => !!props.cumulativeDist)
 
 function dg() { return { top: 18, bottom: 22, left: 42, right: 10 } }
 function da() { return { axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } } } }
@@ -109,17 +119,20 @@ function renderCharts() {
   charts.length = 0
   if (trajRef.value) {
     const c = echarts.init(trajRef.value)
-    c.setOption(props.displacement || mockDisplacement(), true)
+    if (props.displacement) c.setOption(props.displacement, true)
+    else if (isDev) c.setOption(mockDisplacement(), true)
     charts.push(c)
   }
   if (xyRef.value) {
     const c = echarts.init(xyRef.value)
-    c.setOption(props.displacementXY || mockDisplacementXY(), true)
+    if (props.displacementXY) c.setOption(props.displacementXY, true)
+    else if (isDev) c.setOption(mockDisplacementXY(), true)
     charts.push(c)
   }
   if (cumRef.value) {
     const c = echarts.init(cumRef.value)
-    c.setOption(props.cumulativeDist || mockCumulativeDist(), true)
+    if (props.cumulativeDist) c.setOption(props.cumulativeDist, true)
+    else if (isDev) c.setOption(mockCumulativeDist(), true)
     charts.push(c)
   }
 }

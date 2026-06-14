@@ -1,79 +1,66 @@
 <template>
-  <div class="min-h-screen bg-sky-50 text-slate-900 flex font-sans selection:bg-sky-500/30 selection:text-white">
-    <!-- 侧边栏 -->
-    <aside class="w-64 bg-white border-r border-slate-200 hidden lg:flex flex-col justify-between p-3">
-      <div>
-        <div class="flex items-center gap-2.5 px-2 py-3 mb-5 border-b border-slate-200">
-          <div class="w-8 h-8 bg-gradient-to-br from-sky-500 to-sky-600 rounded-lg flex items-center justify-center shadow-[0_0_12px_rgba(56,189,248,0.3)]">
-            <span class="text-white font-bold text-sm font-tech">P</span>
-          </div>
-          <div>
-            <span class="font-bold tracking-wide text-sm text-slate-800">慧步乒乓</span>
-            <p class="text-[11px] text-slate-400 font-tech">Pose3D 分析报告</p>
-          </div>
-        </div>
-
-        <nav class="space-y-0.5">
-          <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-sky-500/10 text-sky-400 font-medium text-sm border border-sky-500/10">
-            <span class="w-4 h-4 flex items-center justify-center">
-              <svg viewBox="0 0 16 16" class="w-3.5 h-3.5 fill-current"><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="2.5" fill="#0f172a"/></svg>
-            </span>
-            <span>步伐训练分析</span>
-          </a>
-        </nav>
+  <div class="min-h-screen bg-sky-50 text-slate-900 flex flex-col font-sans selection:bg-sky-500/30 selection:text-white">
+    <!-- 顶栏 -->
+    <header class="bg-white/90 backdrop-blur border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <h1 class="text-sm font-bold text-slate-800 tracking-wide">{{ subjectDisplay || '受试者' }} · 步伐分析报告</h1>
+        <span v-if="statusText" class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-tech flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          {{ statusText }}
+        </span>
       </div>
-
-      <div class="text-xs text-slate-400 px-2 text-center">
-        <p>{{ subjectDisplay || '暂无受试者' }}</p>
-        <p v-if="stepDisplay" class="font-tech text-[10px] mt-0.5">{{ stepDisplay }}</p>
-      </div>
-    </aside>
-
-    <!-- 主区域 -->
-    <main class="flex-1 flex flex-col min-w-0">
-      <header class="bg-white/90 backdrop-blur border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <h1 class="text-sm font-bold text-slate-800 tracking-wide">B端乒乓球步伐训练分析中心</h1>
-          <span v-if="statusText" class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-tech flex items-center gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            {{ statusText }}
-          </span>
-        </div>
-      </header>
+      <div v-if="stepDisplay" class="text-xs text-slate-400 font-tech">{{ stepDisplay }}</div>
+    </header>
 
       <div v-if="loading" class="flex-1 flex items-center justify-center text-slate-400">报告加载中...</div>
-      <div v-else-if="errorText" class="flex-1 flex items-center justify-center text-rose-400">{{ errorText }}</div>
+      <div v-else-if="errorText" class="flex-1 flex flex-col items-center justify-center gap-3 text-rose-400">
+        <p>{{ errorText }}</p>
+        <button @click="loadReport()" class="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 hover:border-sky-400 hover:text-sky-600 transition-colors">重新加载</button>
+      </div>
 
-      <!-- 内容区 -->
-      <div v-else class="p-3 space-y-3 overflow-y-auto flex-1 max-w-[1440px] mx-auto w-full">
-        <StatsOverview :statsRaw="statsRaw" :dirPie="charts.dirPie" />
+      <!-- 内容区 + 悬浮目录 -->
+      <div v-else class="flex-1 flex min-h-0 relative">
+        <div ref="contentScroll" class="p-3 space-y-6 overflow-y-auto flex-1 max-w-[1000px] mx-auto w-full" style="scroll-behavior: smooth;">
+          <!-- 集中空状态 -->
+          <div v-if="allSectionsEmpty" class="flex items-center justify-center py-20 text-slate-400">
+            <div class="text-center">
+              <p class="text-lg font-medium mb-2">暂无足量分析数据</p>
+              <p class="text-sm">该任务的分析结果不足以生成报告，请检查原始视频质量或重新分析</p>
+            </div>
+          </div>
 
-        <FootworkHeatmap />
+          <template v-else>
+          <!-- 模块1：核心指标 -->
+          <section>
+            <h2 class="text-base font-bold text-slate-800 mb-1">核心指标</h2>
+            <p class="text-xs text-slate-400 mb-3">移动速度、均衡度、训练专注度等关键数据一览</p>
+            <div id="toc-stats"><StatsOverview :statsRaw="statsRaw" :dirPie="charts.dirPie" /></div>
+          </section>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <RadarMetrics :radarOption="charts.radar" :speedTrendOption="charts.speedTrend" />
-          <FootPressure :data="charts.footPressure" />
+          <!-- 模块2：球场覆盖与移动 -->
+          <section>
+            <h2 class="text-base font-bold text-slate-800 mb-1">球场覆盖与移动</h2>
+            <p class="text-xs text-slate-400 mb-3">展示运动员在球桌周围的移动轨迹、速度和加速度表现</p>
+            <div id="toc-table" v-if="sectionVis.table"><TablePlacement :tableScatter="charts.tableScatter" :tableHeatmap="charts.tableHeatmap" :aiInsights="charts.aiInsights" /></div>
+            <div id="toc-speed" v-if="sectionVis.speed" class="mt-3"><SpeedAcceleration :speedAccelDual="charts.speedAccelDual" :speedXY="charts.speedXY" :turning="charts.turning" /></div>
+            <div id="toc-displacement" v-if="sectionVis.displacement" class="mt-3"><DisplacementTrajectory :displacement="charts.displacement" :displacementXY="charts.displacementXY" :cumulativeDist="charts.cumulativeDist" /></div>
+          </section>
+
+          <!-- 模块3：左右均衡与训练建议 -->
+          <section>
+            <h2 class="text-base font-bold text-slate-800 mb-1">左右均衡与训练建议</h2>
+            <p class="text-xs text-slate-400 mb-3">对比左右侧发力、支撑分布，提供针对性训练改进方案</p>
+            <div id="toc-heatmap" v-if="sectionVis.heatmap"><FootworkHeatmap :muscleLoad="charts.muscleLoad" /></div>
+            <div id="toc-radar" v-if="sectionVis.radar" class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <RadarMetrics :radarOption="charts.radar" :speedTrendOption="charts.speedTrend" />
+              <FootPressure :data="charts.footPressure" />
+            </div>
+            <div id="toc-comparison" v-if="sectionVis.comparison" class="mt-3"><ComparisonComprehensive :symmetry="charts.symmetry" :parallelCoords="charts.parallelCoords" :downloads="downloads" /></div>
+          </section>
+          </template>
         </div>
 
-        <TablePlacement :tableScatter="charts.tableScatter" :tableHeatmap="charts.tableHeatmap" :aiInsights="charts.aiInsights" />
-
-        <PeriodTiming :gantt="charts.gantt" :phasePlane="charts.phasePlane" :speedOption="charts.speed" />
-
-        <DisplacementTrajectory :displacement="charts.displacement" :displacementXY="charts.displacementXY" :cumulativeDist="charts.cumulativeDist" />
-
-        <SpeedAcceleration :speedAccelDual="charts.speedAccelDual" :speedXY="charts.speedXY" :turning="charts.turning" />
-
-        <FlightParameters :airborne="charts.airborne" :footHeight="charts.footHeight" />
-
-        <JointBiomechanics :joint="charts.joint" :jointAngVel="charts.jointAngVel" :jointRomRadar="charts.jointRomRadar"
-          :torqueChart="charts.torqueChart" :powerChart="charts.powerChart" :hipAngleChart="charts.hipAngleChart" />
-
-        <EfficiencyEvaluation :assessments="overview.assessments" :efficiency="charts.efficiency" :dtwHeatmap="charts.dtwHeatmap"
-          :efficiencyBars="charts.efficiencyBars" :stepEfficiencyBars="charts.stepEfficiencyBars" :energyBars="charts.energyBars" />
-
-        <ComparisonComprehensive :downloads="downloads" :symmetry="charts.symmetry" :parallelCoords="charts.parallelCoords" />
       </div>
-    </main>
   </div>
 </template>
 
@@ -82,17 +69,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getAnalysisResult, getReportUi } from '../services/api.js'
 import { buildPose3dReportModel } from '../services/reportAdapter.js'
+import { hasChartData } from '../composables/useECharts.js'
 import StatsOverview from '../components/report/StatsOverview.vue'
 import FootworkHeatmap from '../components/report/FootworkHeatmap.vue'
 import RadarMetrics from '../components/report/RadarMetrics.vue'
 import FootPressure from '../components/report/FootPressure.vue'
 import TablePlacement from '../components/report/TablePlacement.vue'
-import PeriodTiming from '../components/report/PeriodTiming.vue'
 import DisplacementTrajectory from '../components/report/DisplacementTrajectory.vue'
 import SpeedAcceleration from '../components/report/SpeedAcceleration.vue'
-import FlightParameters from '../components/report/FlightParameters.vue'
-import JointBiomechanics from '../components/report/JointBiomechanics.vue'
-import EfficiencyEvaluation from '../components/report/EfficiencyEvaluation.vue'
 import ComparisonComprehensive from '../components/report/ComparisonComprehensive.vue'
 
 const route = useRoute()
@@ -115,6 +99,25 @@ const statsRaw = computed(() => model.value?.statsRaw || {})
 const charts = computed(() => model.value?.charts || {})
 const overview = computed(() => model.value?.overview || {})
 const downloads = computed(() => model.value?.downloads || [])
+
+// Section visibility: hide sections whose chart data is null or all-zero
+const sectionVis = computed(() => {
+  const c = charts.value
+  return {
+    heatmap: hasChartData(c.muscleLoad),
+    radar: hasChartData(c.radar) || hasChartData(c.speedTrend) || hasChartData(c.footPressure),
+    table: hasChartData(c.tableScatter) || hasChartData(c.tableHeatmap) || (c.aiInsights && c.aiInsights.length > 0),
+    displacement: hasChartData(c.displacement) || hasChartData(c.displacementXY) || hasChartData(c.cumulativeDist),
+    speed: hasChartData(c.speedAccelDual) || hasChartData(c.speedXY) || hasChartData(c.turning),
+    comparison: hasChartData(c.symmetry) || hasChartData(c.parallelCoords),
+  }
+})
+
+const allSectionsEmpty = computed(() => {
+  return !Object.values(sectionVis.value).some(Boolean)
+})
+
+const contentScroll = ref(null)
 
 async function loadReport() {
   if (!jobId.value) {

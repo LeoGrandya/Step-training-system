@@ -75,7 +75,7 @@ function numberFromRow(row, patterns) {
 
 // ── ECharts option builders ──
 function baseGrid() {
-  return { top: 32, right: 22, bottom: 28, left: 52 }
+  return { top: 36, right: 28, bottom: 36, left: 62 }
 }
 
 function baseTooltip() {
@@ -232,16 +232,19 @@ function buildStats(summary, derived, quality, stepMetrics, unitMetrics) {
   const duration = firstFinite(derived.duration_s, summary.duration_s)
   const stepCount = stepMetrics.length
   const stepFreq = duration && duration > 0 ? (stepCount / duration) : null
-  const dirTypes = {}
-  stepMetrics.forEach(s => { const d = s.step_direction_type; if (d) dirTypes[d] = (dirTypes[d] || 0) + 1 })
+  const peakSpeed = firstFinite(summary.peak_com_speed_mps, derived.com_speed_p95_mps)
+  const asym = derived.clearance_asymmetry_peak_m
+  const symLabel = asym != null
+    ? (asym <= 0.05 ? '优秀' : asym <= 0.1 ? '良好' : '待改善')
+    : '暂无数据'
 
   return [
-    { label: '平均COM速度', value: formatNumber(summary.mean_com_speed_mps, 2), unit: 'm/s', icon: 'speed' },
-    { label: '峰值COM速度', value: formatNumber(firstFinite(summary.peak_com_speed_mps, derived.com_speed_p95_mps), 2), unit: 'm/s', icon: 'peak' },
-    { label: '分析时长', value: formatNumber(duration, 2), unit: 's', icon: 'time' },
-    { label: '有效活动占比', value: quality.analysisActiveRatio != null ? formatNumber(quality.analysisActiveRatio * 100, 1) : '暂无数据', unit: '%', icon: 'active' },
-    { label: '步数 / 步频', value: stepCount > 0 ? `${stepCount} / ${formatNumber(stepFreq, 1)}` : '暂无数据', unit: '步 / Hz', icon: 'steps' },
-    { label: '速度稳定性', value: formatNumber(derived.com_speed_std_mps, 3), unit: 'm/s (std)', icon: 'stability' },
+    { label: '最高移动速度', value: peakSpeed != null ? formatNumber(peakSpeed, 2) : '暂无数据', unit: 'm/s', icon: 'speed' },
+    { label: '左右均衡度', value: asym != null ? formatNumber((1 - asym) * 100, 1) : '暂无数据', unit: '% · ' + symLabel, icon: 'symmetry' },
+    { label: '总步数', value: stepCount > 0 ? String(stepCount) : '暂无数据', unit: '步 · ' + (stepFreq != null ? formatNumber(stepFreq, 1) + 'Hz' : ''), icon: 'steps' },
+    { label: '移动轮次', value: quality.cycleCount != null ? String(quality.cycleCount) : '暂无数据', unit: '轮', icon: 'cycle' },
+    { label: '最快加速度', value: derived.com_accel_abs_p95_mps2 != null ? formatNumber(derived.com_accel_abs_p95_mps2, 1) : '暂无数据', unit: 'm/s²', icon: 'accel' },
+    { label: '训练专注度', value: quality.analysisActiveRatio != null ? formatNumber(quality.analysisActiveRatio * 100, 1) : '暂无数据', unit: '%', icon: 'active' },
   ]
 }
 
@@ -271,7 +274,7 @@ function buildSpeedChart(timeArr, speedArr, unitMetrics) {
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('m/s'),
     series: [{
-      ...lineSeries('COM速度', p.values, C.sky),
+      ...lineSeries('移动速度', p.values, C.sky),
       lineStyle: { color: '#38bdf8', width: 1.5 },
       areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(56,189,248,0.25)' }, { offset: 1, color: 'rgba(56,189,248,0.02)' }] } },
       ...(markAreaData.length ? { markArea: { silent: true, data: markAreaData } } : {}),
@@ -287,7 +290,7 @@ function buildAccelerationChart(timeArr, accelArr) {
     grid: baseGrid(),
     xAxis: xAxisTime(p.labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)),
     yAxis: yAxisLinear('m/s²'),
-    series: [lineSeries('COM加速度', p.values, C.amber)],
+    series: [lineSeries('加速度', p.values, C.amber)],
   }
 }
 
@@ -298,16 +301,16 @@ function buildSpeedAccelDual(timeArr, speedArr, accelArr) {
   const labels = pS.labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)
   return {
     ...baseTooltip(),
-    grid: { top: 22, bottom: 22, left: 46, right: 46 },
-    legend: { data: ['合速度', '合加速度'], right: 0, top: 0, textStyle: { color: '#94a3b8', fontSize: 11 } },
+    grid: { top: 34, bottom: 28, left: 56, right: 66 },
+    legend: { data: ['移动速度', '加速度'], right: 4, top: 6, textStyle: { color: '#94a3b8', fontSize: 11 } },
     xAxis: xAxisTime(labels),
     yAxis: [
-      { type: 'value', name: '合速度(m/s)', nameTextStyle: { color: '#38bdf8', fontSize: 11 }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
-      { type: 'value', name: '合加速度(m/s²)', nameTextStyle: { color: '#f59e0b', fontSize: 11 }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
+      { type: 'value', name: '速度(m/s)', nameTextStyle: { color: '#38bdf8', fontSize: 11 }, nameLocation: 'middle', nameGap: 40, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
+      { type: 'value', name: '加速度(m/s²)', nameTextStyle: { color: '#f59e0b', fontSize: 11 }, nameLocation: 'middle', nameGap: 42, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
     ],
     series: [
-      { ...lineSeries('合速度', pS.values, '#38bdf8'), yAxisIndex: 0, lineStyle: { color: '#38bdf8', width: 2 } },
-      { ...lineSeries('合加速度', pA.values, '#f59e0b'), yAxisIndex: 1, lineStyle: { color: '#f59e0b', width: 1.5, type: 'dashed' } },
+      { ...lineSeries('移动速度', pS.values, '#38bdf8'), yAxisIndex: 0, lineStyle: { color: '#38bdf8', width: 2 } },
+      { ...lineSeries('加速度', pA.values, '#f59e0b'), yAxisIndex: 1, lineStyle: { color: '#f59e0b', width: 1.5, type: 'dashed' } },
     ],
   }
 }
@@ -324,13 +327,13 @@ function buildSpeedXYChart(timeArr, comX, comY) {
   if (!vx.length) return null
   return {
     ...baseTooltip(),
-    grid: { top: 22, bottom: 22, left: 46, right: 46 },
-    legend: { data: ['Vx左右', 'Vy前后'], right: 0, top: 0, textStyle: { color: '#94a3b8', fontSize: 11 } },
+    grid: { top: 34, bottom: 28, left: 56, right: 28 },
+    legend: { data: ['左右速度', '前后速度'], right: 4, top: 6, textStyle: { color: '#94a3b8', fontSize: 11 } },
     xAxis: xAxisTime(labels),
-    yAxis: yAxisLinear('m/s'),
+    yAxis: yAxisLinear('速度(m/s)'),
     series: [
-      { ...lineSeries('Vx左右', vx, '#3b82f6'), lineStyle: { color: '#3b82f6', width: 1.5 } },
-      { ...lineSeries('Vy前后', vy, '#ef4444'), lineStyle: { color: '#ef4444', width: 1.5 } },
+      { ...lineSeries('左右速度', vx, '#3b82f6'), lineStyle: { color: '#3b82f6', width: 1.5 } },
+      { ...lineSeries('前后速度', vy, '#ef4444'), lineStyle: { color: '#ef4444', width: 1.5 } },
     ],
   }
 }
@@ -343,7 +346,7 @@ function buildTurningChart(timeArr, turnArr) {
     grid: baseGrid(),
     xAxis: xAxisTime(p.labels.map(v => timeArr[Number(v)]?.toFixed(2) || v)),
     yAxis: yAxisLinear('deg/s'),
-    series: [lineSeries('转向角速度', p.values, C.violet)],
+    series: [lineSeries('变向速度', p.values, C.violet)],
   }
 }
 
@@ -356,12 +359,12 @@ function buildClearanceChart(timeArr, leftClr, rightClr) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['左脚离地', '右脚离地'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['左脚高度', '右脚高度'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('m'),
     series: [
-      lineSeries('左脚离地', pL.values, C.sky),
-      lineSeries('右脚离地', pR.values, C.amber),
+      lineSeries('左脚高度', pL.values, C.sky),
+      lineSeries('右脚高度', pR.values, C.amber),
     ],
   }
 }
@@ -379,10 +382,10 @@ function buildDisplacementChart(timeArr, comX, comY, speedArr) {
   const maxSpeed = spd ? Math.max(...spd.filter(v => v != null && isFinite(v)), 1) : 3
   return {
     tooltip: tooltipTheme(),
-    grid: { top: 18, bottom: 22, left: 42, right: 10 },
-    xAxis: { type: 'value', name: 'X 左右(m)', nameTextStyle: { color: '#64748b', fontSize: 11 }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
-    yAxis: { type: 'value', name: 'Y 前后(m)', nameTextStyle: { color: '#64748b', fontSize: 11 }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
-    visualMap: spd ? { min: 0, max: maxSpeed, inRange: { color: ['#3b82f6', '#22c55e', '#eab308', '#ef4444'] }, text: ['高速', '低速'], textStyle: { color: '#94a3b8', fontSize: 10 }, right: 2, top: 5, calculable: false, dimension: 2 } : undefined,
+    grid: { top: 28, bottom: 28, left: 52, right: 62 },
+    xAxis: { type: 'value', name: 'X 左右(m)', nameTextStyle: { color: '#64748b', fontSize: 11 }, nameLocation: 'middle', nameGap: 28, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
+    yAxis: { type: 'value', name: 'Y 前后(m)', nameTextStyle: { color: '#64748b', fontSize: 11 }, nameLocation: 'middle', nameGap: 36, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
+    visualMap: spd ? { min: 0, max: maxSpeed, inRange: { color: ['#3b82f6', '#22c55e', '#eab308', '#ef4444'] }, text: ['高速', '低速'], textStyle: { color: '#94a3b8', fontSize: 10 }, right: 8, top: 6, calculable: false, dimension: 2 } : undefined,
     series: [{
       type: 'scatter', data, symbolSize: 3,
       itemStyle: { shadowBlur: 2, shadowColor: '#38bdf866' },
@@ -403,7 +406,7 @@ function buildDisplacementXYChart(timeArr, comX, comY) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['X(左右)', 'Y(前后)'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['X(左右)', 'Y(前后)'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('m/帧'),
     series: [
@@ -430,7 +433,7 @@ function buildCumulativeDistChart(timeArr, comX, comY, comZ) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['3D累积', '水平累积'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['3D累积', '水平累积'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('m'),
     series: [
@@ -472,7 +475,7 @@ function buildFootHeightChart(timeArr, leftClr, rightClr, ts) {
   return {
     ...baseTooltip(),
     grid: { top: 32, right: 22, bottom: 28, left: 52 },
-    legend: { data: ['左脚高度', '右脚高度'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['左脚高度', '右脚高度'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('m'),
     series: [
@@ -505,7 +508,7 @@ function buildJointChart(timeArr, leftKnee, rightKnee, leftAnkle, rightAnkle) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: series.map(s => s.name), bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: series.map(s => s.name), bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('deg'),
     series,
@@ -536,7 +539,7 @@ function buildJointAngVelChart(timeArr, leftKnee, rightKnee, leftAnkle, rightAnk
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: series.map(s => s.name), bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: series.map(s => s.name), bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('deg/s'),
     series,
@@ -577,7 +580,7 @@ function buildJointRomRadar(summary, derived) {
   ]
   return {
     tooltip: { trigger: 'item' },
-    legend: { data: ['左侧', '右侧'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['左侧', '右侧'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     radar: {
       radius: '58%',
       indicator: indicators,
@@ -667,7 +670,7 @@ function buildPhasePlaneChart(comX, comY, speedArr) {
   if (!d.length) return null
   return {
     tooltip: tooltipTheme(),
-    grid: { top: 18, bottom: 22, left: 42, right: 10 },
+    grid: { top: 18, bottom: 22, left: 42, right: 42 },
     xAxis: { type: 'value', name: '位移(m)', nameTextStyle: { color: '#64748b', fontSize: 11 }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } } },
     yAxis: { type: 'value', name: '速度(m/s)', nameTextStyle: { color: '#64748b', fontSize: 11 }, axisLabel: { color: '#475569', fontSize: 11 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } } },
     series: [
@@ -734,7 +737,7 @@ function buildSpeedTrendChart(unitMetrics) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['move平均速', 'restore平均速'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['move平均速', 'restore平均速'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: { type: 'category', data: labels, axisLabel: { color: C.slate, fontSize: 10 } },
     yAxis: yAxisLinear('m/s'),
     series: [
@@ -758,7 +761,7 @@ function buildEfficiencyChart(unitMetrics) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['3D效率', '水平效率'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['3D效率', '水平效率'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: { type: 'category', data: labels, axisLabel: { color: C.slate, fontSize: 10 } },
     yAxis: yAxisLinear(''),
     series: [
@@ -782,13 +785,13 @@ function buildEfficiencyBarsChart(unitMetrics) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['move步频', 'restore步频', '总体步频'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['移动步频', '还原步频', '平均步频'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: { type: 'category', data: labels, axisLabel: { color: C.slate, fontSize: 10 } },
     yAxis: yAxisLinear('Hz'),
     series: [
-      barSeries('move步频', moveFreq, C.sky),
-      barSeries('restore步频', restoreFreq, C.emerald),
-      barSeries('总体步频', unitFreq, C.amber),
+      barSeries('移动步频', moveFreq, C.sky),
+      barSeries('还原步频', restoreFreq, C.emerald),
+      barSeries('平均步频', unitFreq, C.amber),
     ],
   }
 }
@@ -806,9 +809,9 @@ function buildSymmetryScatter(leftClr, rightClr) {
   const max = Math.max(...data.flat().filter(Number.isFinite), 0.05)
   return {
     tooltip: tooltipTheme(),
-    grid: { top: 22, bottom: 22, left: 50, right: 15 },
-    xAxis: { type: 'value', name: '左腿指标', nameTextStyle: { color: '#64748b', fontSize: 11 }, min: 0, max, axisLabel: { color: '#475569', fontSize: 10 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
-    yAxis: { type: 'value', name: '右腿指标', nameTextStyle: { color: '#64748b', fontSize: 11 }, min: 0, max, axisLabel: { color: '#475569', fontSize: 10 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
+    grid: { top: 28, bottom: 28, left: 56, right: 56 },
+    xAxis: { type: 'value', name: '左腿高度(m)', nameTextStyle: { color: '#64748b', fontSize: 11 }, nameLocation: 'middle', nameGap: 28, min: 0, max, axisLabel: { color: '#475569', fontSize: 10 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
+    yAxis: { type: 'value', name: '右腿高度(m)', nameTextStyle: { color: '#64748b', fontSize: 11 }, nameLocation: 'middle', nameGap: 38, min: 0, max, axisLabel: { color: '#475569', fontSize: 10 }, splitLine: { lineStyle: { color: '#e2e8f0', type: 'dashed' } }, axisLine: { lineStyle: { color: '#334155' } } },
     series: [
       { type: 'scatter', data, symbolSize: 8, itemStyle: { color: '#38bdf8', shadowBlur: 3, shadowColor: '#38bdf866' } },
       { type: 'line', markLine: { silent: true, symbol: 'none', lineStyle: { color: '#10b981', type: 'dashed', width: 1.5 }, label: { color: '#10b981', fontSize: 10, formatter: '完全对称 y=x', position: 'end' }, data: [[{ coord: [0, 0] }, { coord: [max, max] }]] }, data: [], lineStyle: { opacity: 0 }, itemStyle: { opacity: 0 } },
@@ -934,7 +937,7 @@ function buildStepEfficiencyBars(unitMetrics) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['move耗时', 'restore耗时'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['move耗时', 'restore耗时'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: { type: 'category', data: labels, axisLabel: { color: C.slate, fontSize: 10 } },
     yAxis: yAxisLinear('s'),
     series: [
@@ -969,7 +972,7 @@ function buildTableHeatmap(comX, comY, comCell) {
   }
 }
 
-// ── AI insights from data ──
+// ── AI 训练建议（教练可读 + 可操作训练动作）──
 function buildAiInsights(summary, derived, quality, stepMetrics, unitMetrics) {
   const items = []
   const speed = finiteNumber(summary.mean_com_speed_mps)
@@ -985,49 +988,112 @@ function buildAiInsights(summary, derived, quality, stepMetrics, unitMetrics) {
   const totalSteps = stepMetrics.length
   const diagPct = totalSteps > 0 ? ((dirTypes.diagonal || 0) / totalSteps * 100) : 0
   const lrPct = totalSteps > 0 ? ((dirTypes.left_right || 0) / totalSteps * 100) : 0
+  const fbPct = totalSteps > 0 ? ((dirTypes.front_back || 0) / totalSteps * 100) : 0
 
-  // Speed assessment
+  // 移动速度
   if (speed !== null && peakSpeed !== null) {
-    if (speed >= 2.5) items.push({ severity: 'excellent', text: `平均速度 ${speed.toFixed(2)} m/s，峰值 ${peakSpeed.toFixed(2)} m/s，移动效率优秀` })
-    else if (speed >= 2.0) items.push({ severity: 'good', text: `平均速度 ${speed.toFixed(2)} m/s，接近良好线(2.0 m/s)，建议增加爆发力训练` })
-    else items.push({ severity: 'warn', text: `平均速度 ${speed.toFixed(2)} m/s，低于良好线(2.0 m/s)，需提升移动速度` })
+    if (speed >= 2.5) {
+      items.push({
+        severity: 'excellent',
+        title: '移动速度优秀',
+        text: `平均速度 ${speed.toFixed(2)} m/s，峰值 ${peakSpeed.toFixed(2)} m/s。保持当前训练强度，可尝试增加变向速度训练。`,
+        action: '建议：多球不定点训练，强化高速移动中的方向切换能力。',
+      })
+    } else if (speed >= 2.0) {
+      items.push({
+        severity: 'good',
+        title: '移动速度良好',
+        text: `平均速度 ${speed.toFixed(2)} m/s，峰值 ${peakSpeed.toFixed(2)} m/s。接近优秀线，爆发力仍有提升空间。`,
+        action: '建议：增加阻力带侧向移动、跳箱训练，每周2-3次。',
+      })
+    } else {
+      items.push({
+        severity: 'warn',
+        title: '移动速度需提升',
+        text: `平均速度 ${speed.toFixed(2)} m/s，低于良好线(2.0 m/s)。移动速度是当前主要短板。`,
+        action: '建议：重点训练启动爆发力——短距离折返跑、负重半蹲跳、敏捷梯训练。',
+      })
+    }
   }
 
-  // Symmetry
+  // 对称性
   if (asym !== null) {
-    if (asym <= 0.05) items.push({ severity: 'excellent', text: `左右离地高度不对称性 ${asym.toFixed(3)} m，对称性优秀` })
-    else if (asym <= 0.10) items.push({ severity: 'good', text: `左右不对称性 ${asym.toFixed(3)} m，在可接受范围，关注弱侧强化` })
-    else items.push({ severity: 'warn', text: `左右不对称性 ${asym.toFixed(3)} m，超出正常范围，建议评估弱侧功能` })
+    if (asym <= 0.05) {
+      items.push({
+        severity: 'excellent',
+        title: '左右均衡性优秀',
+        text: `左右脚高度偏差仅 ${asym.toFixed(3)} m，双侧发力均衡。`,
+        action: '保持现有双侧均衡训练模式。',
+      })
+    } else if (asym <= 0.10) {
+      const weakSide = finiteNumber(derived.clearance_asymmetry_peak_m) > 0 ? '右侧' : '左侧'
+      items.push({
+        severity: 'good',
+        title: '左右均衡性良好',
+        text: `偏差 ${asym.toFixed(3)} m，${weakSide}稍弱，在可接受范围。`,
+        action: `建议：增加${weakSide}单侧力量训练——单腿深蹲、侧向跨步、弹力带髋外展。`,
+      })
+    } else {
+      items.push({
+        severity: 'warn',
+        title: '左右不均衡明显',
+        text: `偏差 ${asym.toFixed(3)} m，超出正常范围，存在弱侧功能不足风险。`,
+        action: '建议：优先强化弱侧——单腿稳定性训练、不对称负荷训练，每周至少3次。',
+      })
+    }
   }
 
-  // Stability
+  // 速度稳定性
   if (stability !== null) {
-    if (stability <= 0.3) items.push({ severity: 'excellent', text: `速度稳定性 ${stability.toFixed(3)} m/s，循环一致性优秀` })
-    else if (stability <= 0.5) items.push({ severity: 'good', text: `速度标准差 ${stability.toFixed(3)} m/s，稳定性良好，可进一步优化` })
-    else items.push({ severity: 'warn', text: `速度波动较大(std=${stability.toFixed(3)})，建议增加节奏控制训练` })
+    if (stability > 0.5) {
+      items.push({
+        severity: 'warn',
+        title: '移动节奏不稳定',
+        text: `速度波动较大(std=${stability.toFixed(2)})，忽快忽慢会影响击球一致性。`,
+        action: '建议：节奏跑训练、节拍器辅助移动、多球固定节奏训练。',
+      })
+    }
   }
 
-  // Direction distribution
-  if (diagPct < 15 && totalSteps > 0) {
-    items.push({ severity: 'warn', text: `斜向步伐仅占 ${diagPct.toFixed(0)}%，建议增加交叉步/斜向移动训练` })
-  }
-  if (lrPct > 70 && totalSteps > 0) {
-    items.push({ severity: 'info', text: `左右移动占比较高(${lrPct.toFixed(0)}%)，可适当增加前后方向训练` })
+  // 方向分布
+  if (diagPct < 15 && totalSteps > 10) {
+    items.push({
+      severity: 'warn',
+      title: '斜向移动不足',
+      text: `斜向步伐仅占 ${diagPct.toFixed(0)}%，前后 ${fbPct.toFixed(0)}%，左右 ${lrPct.toFixed(0)}%。`,
+      action: '建议：增加交叉步、并步斜向移动训练，提升全场覆盖能力。',
+    })
   }
 
-  // Active ratio
+  // 训练专注度
   if (activeRatio !== null && activeRatio < 0.65) {
-    items.push({ severity: 'warn', text: `有效活动占比仅 ${(activeRatio * 100).toFixed(0)}%，视频中可能含大量非分析动作` })
+    items.push({
+      severity: 'warn',
+      title: '训练专注度偏低',
+      text: `有效活动仅占 ${(activeRatio * 100).toFixed(0)}%，视频中可能含较多非移动片段。`,
+      action: '建议：缩短单次录制时长，聚焦高强度移动片段分析。',
+    })
   }
 
-  // Trajectory efficiency
-  if (avgEff !== null) {
-    if (avgEff >= 0.8) items.push({ severity: 'excellent', text: `平均轨迹效率 ${avgEff.toFixed(2)}，移动路径直接高效` })
-    else if (avgEff >= 0.6) items.push({ severity: 'good', text: `轨迹效率 ${avgEff.toFixed(2)}，存在迂回，可优化移动路线` })
-    else items.push({ severity: 'warn', text: `轨迹效率偏低(${avgEff.toFixed(2)})，移动路线不够直接` })
+  // 移动直接性
+  if (avgEff !== null && avgEff < 0.7) {
+    items.push({
+      severity: 'warn',
+      title: '移动路线不够直接',
+      text: `移动直接性 ${avgEff.toFixed(2)}，存在多余绕路动作。`,
+      action: '建议：预判落点训练、最短路径移动练习，减少无效调整步。',
+    })
   }
 
-  if (cycleCount !== null) items.push({ severity: 'info', text: `本分析共检测 ${Math.round(cycleCount)} 个移动周期，步数 ${totalSteps}` })
+  // 摘要
+  if (cycleCount !== null) {
+    items.push({
+      severity: 'info',
+      title: '分析摘要',
+      text: `共检测 ${Math.round(cycleCount)} 个移动轮次，${totalSteps} 步。`,
+      action: '',
+    })
+  }
 
   return items.slice(0, 6)
 }
@@ -1055,7 +1121,7 @@ function buildTorqueChart(timeArr, lhT, rhT, lkT, rkT) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: series.map(s => s.name), bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: series.map(s => s.name), bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('N·m'),
     series,
@@ -1085,7 +1151,7 @@ function buildPowerChart(timeArr, lhP, rhP, lkP, rkP) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: series.map(s => s.name), bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: series.map(s => s.name), bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('W'),
     series,
@@ -1105,7 +1171,7 @@ function buildHipAngleChart(timeArr, leftHip, rightHip) {
   return {
     ...baseTooltip(),
     grid: baseGrid(),
-    legend: { data: ['左髋角', '右髋角'], bottom: 0, textStyle: { fontSize: 10, color: C.slate } },
+    legend: { data: ['左髋角', '右髋角'], bottom: 6, textStyle: { fontSize: 10, color: C.slate } },
     xAxis: xAxisTime(labels),
     yAxis: yAxisLinear('deg'),
     series: [
@@ -1172,7 +1238,7 @@ function buildJointWorkPie(lhP, rhP, lkP, rkP) {
   if (total <= 0) return null
   return {
     tooltip: { trigger: 'item', formatter: '{b}: {d}%' },
-    legend: { bottom: 0, textStyle: { fontSize: 9, color: C.slate } },
+    legend: { bottom: 6, textStyle: { fontSize: 9, color: C.slate } },
     series: [
       {
         type: 'pie', radius: ['45%', '72%'], center: ['28%', '45%'],

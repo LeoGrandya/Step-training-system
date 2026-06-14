@@ -64,9 +64,12 @@ async function loadSubjects() {
   try {
     const payload = await request('/api/v1/subjects');
     subjects.value = payload.items || [];
-    if (!currentSubjectId.value && subjects.value.length) {
+    // 当前 ID 无效（空或不在列表中）时同步到列表首位，避免"显示名 vs 内部 ID"状态分裂
+    const subExists = currentSubjectId.value && subjects.value.some(s => s.id === currentSubjectId.value);
+    if (!subExists && subjects.value.length) {
       currentSubjectId.value = subjects.value[0].id;
       setCurrentSubjectId(subjects.value[0].id);
+      window.dispatchEvent(new CustomEvent('subject-changed', { detail: subjects.value[0] }));
     }
   } catch { subjects.value = []; }
 }
