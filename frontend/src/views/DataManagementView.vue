@@ -101,7 +101,10 @@
                 <td :colspan="activeResource.columns.length + 1">暂无数据</td>
               </tr>
               <tr v-for="item in items" v-else :key="item.id || item.jobId">
-                <td v-for="column in activeResource.columns" :key="column">{{ displayValue(item[column]) }}</td>
+                <td v-for="column in activeResource.columns" :key="column">
+                  <video v-if="isVideoUrlColumn(column) && item[column]" :src="item[column]" controls preload="none" width="160" class="data-management-video-cell" />
+                  <span v-else>{{ displayValue(item[column]) }}</span>
+                </td>
                 <td>
                   <div class="data-management-row-actions">
                     <button
@@ -508,6 +511,10 @@ function buildPayload() {
     payload[field.key] = parseFieldValue(field, form[field.key]);
   }
   return payload;
+}
+
+function isVideoUrlColumn(column) {
+  return column.endsWith('VideoUrl');
 }
 
 function displayValue(value) {

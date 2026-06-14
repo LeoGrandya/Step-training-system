@@ -223,6 +223,8 @@ class KinematicsDataset(db.Model):
     session_csv_path = db.Column(db.String(512))
     step_csv_path = db.Column(db.String(512))
     unit_csv_path = db.Column(db.String(512))
+    synced_left_path = db.Column(db.String(512))
+    synced_right_path = db.Column(db.String(512))
     summary_json = db.Column(JsonText)
     derived_stats_json = db.Column(JsonText)
     quality_flags_json = db.Column(JsonText)

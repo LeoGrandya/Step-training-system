@@ -109,3 +109,23 @@ def register(bp: Blueprint) -> None:
             return json_err("video_file_missing", 404)
 
         return send_file(str(path), mimetype="video/mp4", conditional=True)
+
+    @bp.get("/kinematics-datasets/<dataset_id>/synced-video/<camera>")
+    def stream_synced_video(dataset_id: str, camera: str):
+        """播放同步后的对齐视频（左/右）。文件来自 KinematicsDataset.synced_left/right_path。"""
+        if camera not in ("left", "right"):
+            return json_err("invalid_camera", 400)
+
+        dataset = KinematicsDataset.query.filter(KinematicsDataset.id == dataset_id).first()
+        if dataset is None:
+            return json_err("not_found", 404)
+
+        file_path = dataset.synced_left_path if camera == "left" else dataset.synced_right_path
+        if not file_path:
+            return json_err("not_found", 404)
+
+        path = Path(file_path)
+        if not path.exists():
+            return json_err("video_file_missing", 404)
+
+        return send_file(str(path), mimetype="video/mp4", conditional=True)

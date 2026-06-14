@@ -600,6 +600,8 @@ def run_job_pipeline(
                     chart_bundle_path=chart_bundle_path,
                     kinematics_dir=kin_dir,
                     payload=payload,
+                    synced_left_path=out_l,
+                    synced_right_path=out_r,
                 )
                 store.update(job_id, meta_patch={"kinematics_dataset_id": dataset_id})
             except Exception as exc:

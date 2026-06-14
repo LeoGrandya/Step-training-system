@@ -636,6 +636,13 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.data-management-video-cell {
+  display: block;
+  border-radius: 6px;
+  background: #000;
+  max-width: 160px;
+}
+
 .data-management-add-btn {
   justify-self: start;
   padding: 8px 18px;

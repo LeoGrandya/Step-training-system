@@ -39,6 +39,15 @@ def _is_sqlite(uri: str) -> bool:
     return uri.startswith("sqlite")
 
 
+def _migrate_add_column_if_missing(table: str, column: str, col_type: str) -> None:
+    """Add a column to a SQLite table if it doesn't already exist (idempotent)."""
+    try:
+        db.session.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _on_sqlite_connect(dbapi_connection, connection_record):
     """Enable foreign key constraints on every SQLite connection."""
     import sqlite3
@@ -81,6 +90,10 @@ def init_database(app) -> None:
         from . import models  # noqa: F811 — ensure all models are imported
         with app.app_context():
             db.create_all()
+
+            # Schema migrations for new columns (SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS)
+            _migrate_add_column_if_missing("kinematics_datasets", "synced_left_path", "VARCHAR(512)")
+            _migrate_add_column_if_missing("kinematics_datasets", "synced_right_path", "VARCHAR(512)")
 
         # One-time cleanup: deduplicate subjects (safe to run only on SQLite)
         cleanup_marker = db_path.parent / ".cleanup_subjects_done"

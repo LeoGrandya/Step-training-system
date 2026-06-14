@@ -1459,6 +1459,8 @@ def upsert_kinematics_dataset_for_job(
     chart_bundle_path: Path,
     kinematics_dir: Path,
     payload: dict[str, Any],
+    synced_left_path: Path | None = None,
+    synced_right_path: Path | None = None,
 ) -> str:
     job = ensure_analysis_job_stub(job_id, subject_id=subject_id)
     job.report_payload_path = str(report_path)
@@ -1472,6 +1474,10 @@ def upsert_kinematics_dataset_for_job(
     dataset.training_video_id = training_video_id
     dataset.report_payload_path = str(report_path)
     dataset.chart_bundle_path = str(chart_bundle_path)
+    if synced_left_path is not None:
+        dataset.synced_left_path = str(synced_left_path)
+    if synced_right_path is not None:
+        dataset.synced_right_path = str(synced_right_path)
     dataset.frame_csv_path = str(kinematics_dir / "frame_metrics.csv")
     dataset.session_csv_path = str(kinematics_dir / "session_summary.csv")
     dataset.step_csv_path = str(kinematics_dir / "step_metrics.csv")
@@ -1595,6 +1601,8 @@ def serialize_kinematics_dataset(dataset: KinematicsDataset) -> dict[str, Any]:
         "sessionCsvPath": dataset.session_csv_path,
         "stepCsvPath": dataset.step_csv_path,
         "unitCsvPath": dataset.unit_csv_path,
+        "syncedLeftVideoUrl": f"/api/v1/kinematics-datasets/{dataset.id}/synced-video/left" if dataset.synced_left_path else None,
+        "syncedRightVideoUrl": f"/api/v1/kinematics-datasets/{dataset.id}/synced-video/right" if dataset.synced_right_path else None,
         "summary": _json(dataset.summary_json),
         "derivedStats": _json(dataset.derived_stats_json),
         "qualityFlags": _json(dataset.quality_flags_json),
