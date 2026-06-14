@@ -869,10 +869,12 @@ function buildParallelCoords(unitMetrics) {
   }
 }
 
-// ── Foot pressure (from support state / clearance data) ──
+// ── Foot pressure (from support state data — no foot_side dependency) ──
 function buildFootPressureData(ts, stepMetrics, quality) {
-  const leftSupportFrames = (ts.left_support_state || []).filter(s => s === 'support').length
-  const rightSupportFrames = (ts.right_support_state || []).filter(s => s === 'support').length
+  const leftStates = ts.left_support_state || []
+  const rightStates = ts.right_support_state || []
+  const leftSupportFrames = leftStates.filter(s => s === 'support').length
+  const rightSupportFrames = rightStates.filter(s => s === 'support').length
   const total = leftSupportFrames + rightSupportFrames
   const leftPct = total > 0 ? ((leftSupportFrames / total) * 100).toFixed(1) : '50.0'
   const rightPct = total > 0 ? ((rightSupportFrames / total) * 100).toFixed(1) : '50.0'
@@ -885,8 +887,16 @@ function buildFootPressureData(ts, stepMetrics, quality) {
     else if (m === 'double_airborne') doubleAirborneTime++
   })
 
-  const leftSteps = stepMetrics.filter(s => s.foot_side === 'left').length
-  const rightSteps = stepMetrics.filter(s => s.foot_side === 'right').length
+  // Count support cycles (transitions non-support→support) as step proxy per foot
+  function countSupportCycles(states) {
+    let count = 0
+    for (let i = 1; i < states.length; i++) {
+      if (states[i] === 'support' && states[i - 1] !== 'support') count++
+    }
+    return count
+  }
+  const leftSteps = countSupportCycles(leftStates)
+  const rightSteps = countSupportCycles(rightStates)
 
   return {
     leftSupportPct: Number(leftPct),
@@ -896,7 +906,7 @@ function buildFootPressureData(ts, stepMetrics, quality) {
     doubleAirborneFrames: doubleAirborneTime,
     leftStepCount: leftSteps,
     rightStepCount: rightSteps,
-    totalSteps: stepMetrics.length,
+    totalSteps: stepMetrics.length || (leftSteps + rightSteps),
   }
 }
 
