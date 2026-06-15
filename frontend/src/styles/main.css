@@ -3848,3 +3848,18 @@ textarea {
     height: 260px;
   }
 }
+
+/* ── 自定义滚动条（来自 my-pingpong-project）── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

@@ -229,22 +229,21 @@ export function buildPose3dReportModel({ result, reportUi, jobId }) {
 
 // ── StatsOverview ──
 function buildStats(summary, derived, quality, stepMetrics, unitMetrics) {
-  const duration = firstFinite(derived.duration_s, summary.duration_s)
   const stepCount = stepMetrics.length
-  const stepFreq = duration && duration > 0 ? (stepCount / duration) : null
   const peakSpeed = firstFinite(summary.peak_com_speed_mps, derived.com_speed_p95_mps)
+  const p95Speed = firstFinite(derived.com_speed_p95_mps, summary.mean_com_speed_mps)
   const asym = derived.clearance_asymmetry_peak_m
-  const symLabel = asym != null
-    ? (asym <= 0.05 ? '优秀' : asym <= 0.1 ? '良好' : '待改善')
-    : '暂无数据'
+  const accel = derived.com_accel_abs_p95_mps2
+  const cycleCount = quality.cycleCount
+  const activePct = quality.analysisActiveRatio != null ? quality.analysisActiveRatio * 100 : null
 
   return [
-    { label: '最高移动速度', value: peakSpeed != null ? formatNumber(peakSpeed, 2) : '暂无数据', unit: 'm/s', icon: 'speed' },
-    { label: '左右均衡度', value: asym != null ? formatNumber((1 - asym) * 100, 1) : '暂无数据', unit: '% · ' + symLabel, icon: 'symmetry' },
-    { label: '总步数', value: stepCount > 0 ? String(stepCount) : '暂无数据', unit: '步 · ' + (stepFreq != null ? formatNumber(stepFreq, 1) + 'Hz' : ''), icon: 'steps' },
-    { label: '移动轮次', value: quality.cycleCount != null ? String(quality.cycleCount) : '暂无数据', unit: '轮', icon: 'cycle' },
-    { label: '最快加速度', value: derived.com_accel_abs_p95_mps2 != null ? formatNumber(derived.com_accel_abs_p95_mps2, 1) : '暂无数据', unit: 'm/s²', icon: 'accel' },
-    { label: '训练专注度', value: quality.analysisActiveRatio != null ? formatNumber(quality.analysisActiveRatio * 100, 1) : '暂无数据', unit: '%', icon: 'active' },
+    { label: '最高速度', value: peakSpeed != null ? formatNumber(peakSpeed, 2) : '暂无数据', unit: 'm/s', icon: 'speed' },
+    { label: 'P95速度', value: p95Speed != null ? formatNumber(p95Speed, 2) : '暂无数据', unit: 'm/s（95%时间低于此值）', icon: 'p95' },
+    { label: '加速度峰值', value: accel != null ? formatNumber(accel, 1) : '暂无数据', unit: 'm/s²', icon: 'accel' },
+    { label: '移动轮次', value: cycleCount != null ? String(Math.round(cycleCount)) : '暂无数据', unit: '轮', icon: 'cycle' },
+    { label: '总步数', value: stepCount > 0 ? String(stepCount) : '暂无数据', unit: '步', icon: 'steps' },
+    { label: '左右均衡', value: asym != null ? formatNumber(asym * 100, 1) : '暂无数据', unit: 'cm偏差（越小越均衡）', icon: 'symmetry' },
   ]
 }
 
