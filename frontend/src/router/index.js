@@ -8,6 +8,7 @@ import DataManagementView from '../views/DataManagementView.vue';
 import LegacyHtmlView from '../views/LegacyHtmlView.vue';
 import PingpongReportView from '../views/PingpongReportView.vue';
 import ReportHistoryView from '../views/ReportHistoryView.vue';
+import MembershipView from '../views/MembershipView.vue';
 import TrainingView from '../views/TrainingView.vue';
 import { scheduleGuideForRoute } from '../guides/guideScheduler.js';
 import { hasSession, getCurrentAccountId } from '../stores/storage.js';
@@ -28,6 +29,7 @@ const routes = [
   { path: '/settings', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'settings.html', requiresAuth: true } },
   { path: '/team', component: LegacyHtmlView, meta: { fullFrame: true, legacyFile: 'team.html' } },
   { path: '/auth', component: AuthView },
+  { path: '/membership', component: MembershipView },
 ];
 
 const router = createRouter({
