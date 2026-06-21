@@ -440,20 +440,14 @@ def create_subject(payload: dict[str, Any], *, normalize_name) -> dict[str, Any]
 
     created_by = payload.get("createdByAccountId") or None
 
-    # 检测同账号下完全重复的受试者（同名且年龄/身高/体重完全相同）
+    # 同账号下同名即拦截，要求用户换名或补充区分信息
     existing = Subject.query.filter(
         Subject.name == name,
         Subject.is_active.is_(True),
         Subject.created_by_account_id == created_by,
     ).first()
     if existing is not None:
-        attrs_match = (
-            existing.age == age
-            and existing.height_cm == height_cm
-            and existing.weight_kg == weight_kg
-        )
-        if attrs_match:
-            raise ValueError("该账号下已存在同名且档案信息完全相同的受试者，请补充年龄等信息以区分")
+        raise ValueError("此账号下已存在同名受试者，请更换名称，或补充年龄、身高、体重等选填信息以区分")
 
     subject = Subject(
         id=_new_id("usr"),

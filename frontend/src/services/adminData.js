@@ -35,7 +35,7 @@ export const RESOURCE_DEFINITIONS = [
     title: '受试者',
     endpoint: '/api/v1/subjects',
     description: '训练、分析、评估全链路的受试者基础信息。',
-    columns: ['name', 'age', 'hand', 'level', 'years', 'updatedAt'],
+    columns: ['displayName', 'age', 'hand', 'level', 'years', 'updatedAt'],
     fields: [
       textField('name', '姓名', { required: true }),
       numberField('age', '年龄'),
@@ -78,6 +78,8 @@ export const RESOURCE_DEFINITIONS = [
     endpoint: '/api/v1/footwork-types',
     description: '所有路线、训练配置和评估记录复用的步伐字典。',
     deletable: false,
+    creatable: false,
+    editable: false,
     columns: ['code', 'name', 'category', 'defaultStartCell', 'defaultSequence', 'updatedAt'],
     fields: [
       textField('code', '编码', { required: true }),
@@ -280,7 +282,7 @@ export const COLUMN_LABELS = {
   grade: '等级',
   username: '用户名',
   account: '账号',
-  displayName: '用户名',
+  displayName: '受试者',
   subjectName: '受试者',
   stepName: '步伐名称',
   profile: '分析档位',

@@ -62,6 +62,13 @@
           </dl>
         </template>
 
+        <!-- 会员升级 -->
+        <template v-if="activeTab === 'membership'">
+          <h2 class="account-main__title">会员升级</h2>
+          <hr class="account-main__hr" />
+          <MembershipPlans />
+        </template>
+
         <!-- 修改密码 -->
         <template v-if="activeTab === 'password'">
           <h2 class="account-main__title">修改密码</h2>
@@ -100,10 +107,12 @@ import { getAccountMe, changePassword } from '../services/api.js';
 import { getCurrentAccountId, logoutAccountSession } from '../stores/storage.js';
 import { refreshLoginState } from '../router/guard.js';
 import { useRouter } from 'vue-router';
+import MembershipPlans from '../components/MembershipPlans.vue';
 
 const router = useRouter();
 const tabs = [
   { key: 'info', label: '个人信息' },
+  { key: 'membership', label: '会员升级' },
   { key: 'password', label: '修改密码' },
 ];
 const activeTab = ref('info');

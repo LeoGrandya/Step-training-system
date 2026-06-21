@@ -11,8 +11,8 @@
           <input v-model.trim="form.name" type="text" placeholder="受试者姓名" required autofocus />
         </label>
 
-        <details class="csub-extra">
-          <summary>选填信息（可后续完善）</summary>
+        <details class="csub-extra" :open="extraOpen">
+          <summary @click.prevent="extraOpen = !extraOpen">选填信息（可后续完善）</summary>
           <div class="csub-extra__grid">
             <label class="csub-field"><span>年龄</span><input v-model.number="form.age" type="number" min="1" max="120" /></label>
             <label class="csub-field"><span>身高 (cm)</span><input v-model.number="form.heightCm" type="number" min="50" max="300" /></label>
@@ -40,14 +40,14 @@
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { request } from '../services/api.js';
-import { setCurrentSubjectId } from '../stores/storage.js';
-import { refreshLoginState } from '../router/guard.js';
+import { setCurrentSubjectId, STORAGE_KEYS } from '../stores/storage.js';
 
 const router = useRouter();
 const form = reactive({ name: '', age: null, heightCm: null, weightKg: null, hand: '右手', years: 0, level: '业余' });
 const submitting = ref(false);
 const message = ref('');
 const isError = ref(false);
+const extraOpen = ref(false);
 
 function isValidName(name) {
   return /^[一-鿿㐀-䶿a-zA-Z\s]+$/.test(name);
@@ -79,11 +79,17 @@ async function submit() {
 
     const sub = res.item;
     setCurrentSubjectId(sub.id);
+    // 通知路由守卫跳过缓存（通过 sessionStorage 避免循环引用）
+    try { window.sessionStorage.setItem(STORAGE_KEYS.subjectJustCreated, '1'); } catch {}
     window.dispatchEvent(new CustomEvent('subject-changed', { detail: sub }));
     router.push('/training?selectMode=1');
   } catch (error) {
     isError.value = true;
     message.value = error.message || '创建失败，请重试。';
+    // 同名冲突 → 自动展开选填信息，提醒用户补充更多区分信息
+    if ((error.message || '').includes('补充')) {
+      extraOpen.value = true;
+    }
   } finally {
     submitting.value = false;
   }

@@ -42,8 +42,13 @@ let subjectCache = { count: -1, checkedAt: 0 };
 async function accountHasSubjects() {
   const aid = getCurrentAccountId();
   if (!aid) return false;
-  // 缓存 10 秒避免每次路由切换都请求
-  if (subjectCache.count >= 0 && Date.now() - subjectCache.checkedAt < 10000) {
+  // 创建受试者后置了标志 → 强制刷新，避免缓存误判踢回创建页
+  const justCreated = (() => { try { return window.sessionStorage.getItem('ai_sport_lab.subject_just_created'); } catch { return null; } })();
+  if (justCreated) {
+    try { window.sessionStorage.removeItem('ai_sport_lab.subject_just_created'); } catch {}
+  }
+  // 缓存 10 秒避免每次路由切换都请求（刚刚创建了受试者则跳过缓存）
+  if (!justCreated && subjectCache.count >= 0 && Date.now() - subjectCache.checkedAt < 10000) {
     return subjectCache.count > 0;
   }
   try {

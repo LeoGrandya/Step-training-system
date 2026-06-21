@@ -121,6 +121,14 @@
                       编辑
                     </button>
                     <button
+                      v-if="activeResource.key === 'footwork-types'"
+                      type="button"
+                      class="secondary-button"
+                      @click="viewFootwork(item)"
+                    >
+                      查看
+                    </button>
+                    <button
                       v-if="activeResource.deletable !== false"
                       type="button"
                       class="danger-button"
@@ -151,21 +159,21 @@
       <div v-if="showModal" class="data-management-modal" @click.self="closeModal">
         <div class="data-management-modal__card">
           <div class="data-management-modal__head">
-            <h3>{{ editingId ? '编辑记录' : '新增记录' }}</h3>
+            <h3>{{ viewMode ? '查看基础步伐' : (editingId ? '编辑记录' : '新增记录') }}</h3>
             <button type="button" class="link-button" @click="closeModal" aria-label="关闭">✕</button>
           </div>
 
           <p v-if="modalError" class="data-management-error">{{ modalError }}</p>
 
           <!-- 基础步伐专用：九宫格选点 -->
-          <form v-if="activeResource.key === 'footwork-types'" class="data-management-form" @submit.prevent="saveResource">
+          <form v-if="activeResource.key === 'footwork-types'" class="data-management-form" @submit.prevent="viewMode ? closeModal() : saveResource()">
             <label class="data-management-field data-management-field--wide">
               <span>名称</span>
-              <input v-model="form.name" type="text" required placeholder="例如：正手跨步" />
+              <input v-model="form.name" type="text" required placeholder="例如：正手跨步" :disabled="viewMode" />
             </label>
             <label class="data-management-field">
               <span>分类</span>
-              <select v-model="form.category" required>
+              <select v-model="form.category" required :disabled="viewMode">
                 <option value="">未选择</option>
                 <option value="单一步伐">单一步伐</option>
                 <option value="组合步伐">组合步伐</option>
@@ -173,7 +181,7 @@
             </label>
             <label class="data-management-field">
               <span>起始格</span>
-              <select v-model.number="form.defaultStartCell">
+              <select v-model.number="form.defaultStartCell" :disabled="viewMode">
                 <option v-for="n in 9" :key="n" :value="n">{{ n }}</option>
               </select>
             </label>
@@ -185,7 +193,8 @@
                     v-for="n in 9" :key="n" type="button"
                     class="ft-grid-cell"
                     :class="{ 'is-start': n === form.defaultStartCell, 'is-last': ftSeq.length && n === ftSeq[ftSeq.length - 1] }"
-                    @click="ftToggleCell(n)"
+                    :disabled="viewMode"
+                    @click="!viewMode && ftToggleCell(n)"
                   >
                     {{ n }}
                     <span v-if="n === form.defaultStartCell" class="ft-grid-tag">起点</span>
@@ -193,23 +202,23 @@
                 </div>
                 <div class="ft-seq-preview">
                   <template v-if="ftSeq.length">
-                    <span v-for="(cell, i) in ftSeq" :key="i" class="ft-seq-badge" @click="ftSeq.splice(i, 1)">{{ cell }}</span>
+                    <span v-for="(cell, i) in ftSeq" :key="i" class="ft-seq-badge" @click="!viewMode && ftSeq.splice(i, 1)">{{ cell }}</span>
                   </template>
-                  <span v-else class="ft-seq-hint">点击九宫格添加步伐点</span>
+                  <span v-else class="ft-seq-hint">{{ viewMode ? '无序列' : '点击九宫格添加步伐点' }}</span>
                 </div>
-                <button type="button" class="link-button ft-seq-clear" @click="ftSeq.splice(0)">清空序列</button>
+                <button v-if="!viewMode" type="button" class="link-button ft-seq-clear" @click="ftSeq.splice(0)">清空序列</button>
               </div>
             </div>
             <label class="data-management-field data-management-field--wide">
               <span>说明</span>
-              <textarea v-model="form.description" rows="2" placeholder="可选…"></textarea>
+              <textarea v-model="form.description" rows="2" placeholder="可选…" :disabled="viewMode"></textarea>
             </label>
             <div class="data-management-form__actions">
-              <button type="submit" :disabled="saving">
+              <button v-if="!viewMode" type="submit" :disabled="saving">
                 <span v-if="saving" class="data-management-saving-indicator"></span>
                 {{ saving ? '保存中…' : (editingId ? '保存修改' : '新增记录') }}
               </button>
-              <button type="button" class="secondary-button" @click="closeModal">取消</button>
+              <button type="button" class="secondary-button" @click="closeModal">{{ viewMode ? '关闭' : '取消' }}</button>
             </div>
           </form>
 
@@ -398,6 +407,7 @@ const errorText = ref('');
 const editingId = ref('');
 const showModal = ref(false);
 const modalError = ref('');
+const viewMode = ref(false);
 const accountId = ref(getCurrentAccountId());
 const form = reactive({});
 const lookups = reactive({});
@@ -448,6 +458,7 @@ function defaultValueFor(field) {
 function clearForm() {
   editingId.value = '';
   modalError.value = '';
+  viewMode.value = false;
   ftSeq.value = [];
   for (const key of Object.keys(form)) delete form[key];
   const rk = activeResource.value.key;
@@ -636,6 +647,11 @@ function editResource(item) {
     }
   }
   showModal.value = true;
+}
+
+function viewFootwork(item) {
+  editResource(item);
+  viewMode.value = true;
 }
 
 function _showResult(state, title, desc = '', error = '') {

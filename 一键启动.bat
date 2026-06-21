@@ -24,5 +24,5 @@ echo.
 echo [2/2] Starting Flask server...
 echo.
 cd /d "%~dp0web_1"
-call "%~dp0.venv\Scripts\python.exe" v1.py
+python v1.py
 pause

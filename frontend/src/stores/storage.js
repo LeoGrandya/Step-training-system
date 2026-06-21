@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   currentUserId: 'pp-current-user-id',
   currentAccountId: 'ai_sport_lab.current_account_id',
   currentSubjectId: 'ai_sport_lab.current_subject_id',
+  subjectJustCreated: 'ai_sport_lab.subject_just_created',
   hardwareFeedback: 'ai_sport_lab.hardware_feedback',
   trainingPrefs: 'ai_sport_lab.training_prefs',
   pose3dProfile: 'pp-footwork-base-profile',
