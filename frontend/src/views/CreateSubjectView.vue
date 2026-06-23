@@ -41,6 +41,7 @@ import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { request } from '../services/api.js';
 import { setCurrentSubjectId, STORAGE_KEYS } from '../stores/storage.js';
+import { notifySubjectChanged } from '../stores/subjectEvents.js';
 
 const router = useRouter();
 const form = reactive({ name: '', age: null, heightCm: null, weightKg: null, hand: '右手', years: 0, level: '业余' });
@@ -81,7 +82,7 @@ async function submit() {
     setCurrentSubjectId(sub.id);
     // 通知路由守卫跳过缓存（通过 sessionStorage 避免循环引用）
     try { window.sessionStorage.setItem(STORAGE_KEYS.subjectJustCreated, '1'); } catch {}
-    window.dispatchEvent(new CustomEvent('subject-changed', { detail: sub }));
+    notifySubjectChanged();
     router.push('/training?selectMode=1');
   } catch (error) {
     isError.value = true;

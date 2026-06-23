@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, request
+from sqlalchemy import or_
 
 from backend import repositories as repo
 from backend.api_utils import get_account_id_from_headers as _account_id, json_err, json_ok, list_response, parse_pagination
@@ -38,21 +39,40 @@ def register(bp: Blueprint) -> None:
     @bp.get("/training-configs")
     def list_training_configs():
         page = parse_pagination(request.args, default_limit=30)
+        sid = (request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None
+        fid = (request.args.get("footworkTypeId") or request.args.get("footwork_type_id") or "").strip() or None
+        rid = (request.args.get("routeDefinitionId") or request.args.get("route_definition_id") or "").strip() or None
+        mode = (request.args.get("mode") or "").strip() or None
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
         items, total = repo.list_training_configs_page(
             keyword=page.keyword,
-            subject_id=(request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None,
+            subject_id=sid,
             subject_ids=_account_subject_ids(),
-            footwork_type_id=(request.args.get("footworkTypeId") or request.args.get("footwork_type_id") or "").strip()
-            or None,
-            route_definition_id=(
-                request.args.get("routeDefinitionId") or request.args.get("route_definition_id") or ""
-            ).strip()
-            or None,
-            mode=(request.args.get("mode") or "").strip() or None,
+            footwork_type_id=fid,
+            route_definition_id=rid,
+            mode=mode,
             limit=page.limit,
             offset=page.offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+        base = repo.TrainingConfig.query
+        if page.keyword:
+            pattern = f"%{page.keyword.strip()}%"
+            base = base.filter(or_(
+                repo.TrainingConfig.id.like(pattern),
+                repo.TrainingConfig.mode.like(pattern),
+                repo.TrainingConfig.analysis_profile.like(pattern),
+            ))
+        filters_data = repo.build_filter_aggregation(
+            base, repo.TrainingConfig, "training-configs",
+            {"subjectId": sid, "footworkTypeId": fid, "routeDefinitionId": rid, "mode": mode},
+        )
+
+        return list_response(items, total=total, limit=page.limit, offset=page.offset,
+                            extra={"filters": filters_data})
 
     @bp.post("/training-configs")
     def create_training_config():
@@ -130,19 +150,39 @@ def register(bp: Blueprint) -> None:
     @bp.get("/training-videos")
     def list_training_videos():
         page = parse_pagination(request.args, default_limit=30)
+        sid = (request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
         items, total = repo.list_training_videos_page(
             keyword=page.keyword,
-            subject_id=(request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None,
+            subject_id=sid,
             subject_ids=_account_subject_ids(),
             training_config_id=(
                 request.args.get("trainingConfigId") or request.args.get("training_config_id") or ""
-            ).strip()
-            or None,
+            ).strip() or None,
             status=(request.args.get("status") or "").strip() or None,
             limit=page.limit,
             offset=page.offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+        base = repo.TrainingVideo.query
+        if page.keyword:
+            pattern = f"%{page.keyword.strip()}%"
+            base = base.filter(or_(
+                repo.TrainingVideo.id.like(pattern),
+                repo.TrainingVideo.left_original_name.like(pattern),
+                repo.TrainingVideo.right_original_name.like(pattern),
+                repo.TrainingVideo.status.like(pattern),
+            ))
+        filters_data = repo.build_filter_aggregation(
+            base, repo.TrainingVideo, "training-videos",
+            {"subjectId": sid},
+        )
+
+        return list_response(items, total=total, limit=page.limit, offset=page.offset,
+                            extra={"filters": filters_data})
 
     @bp.post("/training-videos")
     def create_training_video():

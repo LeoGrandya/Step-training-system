@@ -297,6 +297,8 @@ def list_subjects_page(
     level: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = Subject.query
     query = active_filter(query, Subject, is_active=is_active)
@@ -307,7 +309,9 @@ def list_subjects_page(
     if level:
         query = query.filter(Subject.level == level)
     query = keyword_filter(query, Subject, Subject.name, keyword)
-    query = query.order_by(Subject.name.asc())
+    query = apply_sort_column(query, Subject, "subjects", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(Subject.name.asc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     items = [serialize_subject(row) for row in rows]
     _compute_display_names(items)
@@ -335,6 +339,8 @@ def list_footwork_types_page(
     category: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = FootworkType.query
     query = active_filter(query, FootworkType, is_active=is_active)
@@ -343,7 +349,9 @@ def list_footwork_types_page(
     if keyword:
         pattern = f"%{keyword.strip()}%"
         query = query.filter(or_(FootworkType.name.like(pattern), FootworkType.code.like(pattern)))
-    query = query.order_by(FootworkType.name.asc())
+    query = apply_sort_column(query, FootworkType, "footwork-types", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(FootworkType.name.asc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_footwork_type(row) for row in rows], total
 
@@ -759,6 +767,8 @@ def list_routes_page(
     account_id: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = RouteDefinition.query.filter(RouteDefinition.is_active.is_(True))
     if account_id:
@@ -778,7 +788,9 @@ def list_routes_page(
                 RouteDefinition.action_requirements.like(pattern),
             )
         )
-    query = query.order_by(RouteDefinition.updated_at.desc(), RouteDefinition.created_at.desc())
+    query = apply_sort_column(query, RouteDefinition, "routes", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(RouteDefinition.updated_at.desc(), RouteDefinition.created_at.desc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_route(row) for row in rows], total
 
@@ -1132,6 +1144,8 @@ def list_training_configs_page(
     mode: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = TrainingConfig.query
     if subject_id:
@@ -1153,7 +1167,9 @@ def list_training_configs_page(
                 TrainingConfig.analysis_profile.like(pattern),
             )
         )
-    query = query.order_by(TrainingConfig.updated_at.desc(), TrainingConfig.created_at.desc())
+    query = apply_sort_column(query, TrainingConfig, "training-configs", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(TrainingConfig.updated_at.desc(), TrainingConfig.created_at.desc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_training_config(row) for row in rows], total
 
@@ -1296,6 +1312,8 @@ def list_training_videos_page(
     status: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = TrainingVideo.query
     if subject_id:
@@ -1318,7 +1336,9 @@ def list_training_videos_page(
                 TrainingVideo.status.like(pattern),
             )
         )
-    query = query.order_by(TrainingVideo.created_at.desc())
+    query = apply_sort_column(query, TrainingVideo, "training-videos", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(TrainingVideo.created_at.desc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_training_video(row) for row in rows], total
 
@@ -1331,6 +1351,195 @@ def get_training_video_payload(video_id: str) -> dict[str, Any] | None:
 def _counts_by_column(model, column) -> dict[str, int]:
     rows = db.session.query(column, func.count(model.id)).group_by(column).all()
     return {str(value or "未设置"): int(count or 0) for value, count in rows}
+
+
+# ── Filter aggregation (for data-management filter panel) ──
+
+# Per-resource filter column definitions.
+#   key: frontend filter field key
+#   column: model attribute (snake_case)
+#   label: display label (Chinese)
+#   lookup: optional — {model, label_attr, value_attr} for FK filters
+FILTER_FIELDS_BY_RESOURCE = {
+    "subjects": [
+        {"key": "hand", "column": "hand", "label": "持拍手"},
+        {"key": "level", "column": "level", "label": "水平"},
+    ],
+    "footwork-types": [
+        {"key": "category", "column": "category", "label": "分类"},
+    ],
+    "routes": [
+        {
+            "key": "footworkTypeId", "column": "footwork_type_id", "label": "关联步伐",
+            "lookup": {"model": FootworkType, "label_attr": "name", "value_attr": "id"},
+        },
+    ],
+    "training-configs": [
+        {
+            "key": "subjectId", "column": "subject_id", "label": "受试者",
+            "lookup": {"model": Subject, "label_attr": "name", "value_attr": "id"},
+        },
+        {
+            "key": "footworkTypeId", "column": "footwork_type_id", "label": "基础步伐",
+            "lookup": {"model": FootworkType, "label_attr": "name", "value_attr": "id"},
+        },
+        {
+            "key": "routeDefinitionId", "column": "route_definition_id", "label": "训练路线",
+            "lookup": {"model": RouteDefinition, "label_attr": "name", "value_attr": "id"},
+        },
+        {"key": "mode", "column": "mode", "label": "训练模式"},
+    ],
+    "training-videos": [
+        {
+            "key": "subjectId", "column": "subject_id", "label": "受试者",
+            "lookup": {"model": Subject, "label_attr": "name", "value_attr": "id"},
+        },
+    ],
+    "kinematics-datasets": [
+        {
+            "key": "subjectId", "column": "subject_id", "label": "受试者",
+            "lookup": {"model": Subject, "label_attr": "name", "value_attr": "id"},
+        },
+    ],
+    "evaluations": [
+        {
+            "key": "subjectId", "column": "subject_id", "label": "受试者",
+            "lookup": {"model": Subject, "label_attr": "name", "value_attr": "id"},
+        },
+        {"key": "grade", "column": "grade", "label": "等级"},
+    ],
+    "accounts": [
+        {"key": "status", "column": "status", "label": "状态"},
+    ],
+    "roles": [],
+    "permissions": [],
+}
+
+# Sort column whitelist per resource (frontend column key → model attribute)
+SORT_COLUMNS_BY_RESOURCE = {
+    "subjects": {"displayName": "name", "age": "age", "years": "years", "updatedAt": "updated_at"},
+    "footwork-types": {"code": "code", "name": "name", "updatedAt": "updated_at"},
+    "routes": {"name": "name", "updatedAt": "updated_at"},
+    "training-configs": {"updatedAt": "updated_at"},
+    "training-videos": {"createdAt": "created_at"},
+    "kinematics-datasets": {"createdAt": "created_at"},
+    "evaluations": {"score": "score", "createdAt": "created_at"},
+    "accounts": {"account": "account", "username": "username", "updatedAt": "updated_at"},
+    "roles": {"code": "code", "name": "name"},
+    "permissions": {"code": "code", "name": "name"},
+}
+
+
+def build_filter_aggregation(base_query, model, resource_key, active_column_filters):
+    """Return [{"key", "label", "options": [{"value", "label", "count"}]}] for the filter panel.
+
+    base_query: the SQLAlchemy query with keyword / is_active / account_id filters applied
+                but WITHOUT per-column filters (hand, level, mode, etc.)
+    model: the primary model class for this resource
+    resource_key: key into FILTER_FIELDS_BY_RESOURCE
+    active_column_filters: {key: current_filter_value} for all column filters
+
+    For each filter field, we build a query that applies all OTHER active column
+    filters (so counts are "linked" / contextual) and GROUP BY the field's column.
+    """
+    field_defs = FILTER_FIELDS_BY_RESOURCE.get(resource_key, [])
+    if not field_defs:
+        return []
+
+    results = []
+    for fd in field_defs:
+        query = base_query
+
+        # Apply all OTHER active column filters (linked counts)
+        for other_key, other_val in active_column_filters.items():
+            if other_key == fd["key"] or not other_val:
+                continue
+            other_fd = next((f for f in field_defs if f["key"] == other_key), None)
+            if other_fd is None:
+                continue
+            col_attr = getattr(model, other_fd["column"], None)
+            if col_attr is not None:
+                query = query.filter(col_attr == other_val)
+
+        col_attr = getattr(model, fd["column"], None)
+        if col_attr is None:
+            continue
+
+        lookup = fd.get("lookup")
+        if lookup:
+            # FK field: JOIN lookup table to get label
+            lookup_model = lookup["model"]
+            label_attr = getattr(lookup_model, lookup["label_attr"], None)
+            value_attr = getattr(lookup_model, lookup["value_attr"], None)
+            if label_attr is None or value_attr is None:
+                continue
+            # SELECT value, label, COUNT(*)
+            rows = (
+                db.session.query(col_attr, label_attr, func.count(model.id))
+                .outerjoin(lookup_model, col_attr == value_attr)
+                .group_by(col_attr, label_attr)
+                .order_by(func.count(model.id).desc())
+            )
+            # Apply the same "other filters" to this subquery
+            for other_key, other_val in active_column_filters.items():
+                if other_key == fd["key"] or not other_val:
+                    continue
+                other_fd = next((f for f in field_defs if f["key"] == other_key), None)
+                if other_fd is None:
+                    continue
+                oc = getattr(model, other_fd["column"], None)
+                if oc is not None:
+                    rows = rows.filter(oc == other_val)
+            rows = rows.all()
+            options = [
+                {"value": str(val or ""), "label": str(lbl or val or "未设置"), "count": int(cnt or 0)}
+                for val, lbl, cnt in rows
+            ]
+        else:
+            # Direct column: GROUP BY the column itself
+            rows = query.with_entities(col_attr, func.count(model.id)).group_by(col_attr).order_by(
+                func.count(model.id).desc()
+            ).all()
+            options = [
+                {"value": str(val or ""), "label": str(val or "未设置"), "count": int(cnt or 0)}
+                for val, cnt in rows
+            ]
+
+        # Add "全部" as first option with total count
+        total_count = sum(opt["count"] for opt in options)
+        options.insert(0, {"value": "", "label": "全部", "count": total_count})
+
+        results.append({
+            "key": fd["key"],
+            "label": fd["label"],
+            "options": options,
+        })
+
+    return results
+
+
+def apply_sort_column(query, model, resource_key, sort_by, sort_order):
+    """Apply ORDER BY from frontend sort params. Returns modified query."""
+    if not sort_by:
+        return query
+    mapping = SORT_COLUMNS_BY_RESOURCE.get(resource_key, {})
+    col_name = mapping.get(sort_by)
+    if not col_name:
+        return query
+    col = getattr(model, col_name, None)
+    if col is None:
+        return query
+    if sort_order == "desc":
+        return query.order_by(col.desc())
+    return query.order_by(col.asc())
+
+
+def keyword_filter_footwork(query, keyword: str | None):
+    """Keyword filter for footwork types (code + name)."""
+    if not keyword:
+        return query
+    pattern = f"%{keyword.strip()}%"
+    return query.filter(or_(FootworkType.name.like(pattern), FootworkType.code.like(pattern)))
 
 
 def get_training_stats_payload() -> dict[str, Any]:
@@ -1629,6 +1838,8 @@ def list_kinematics_datasets_page(
     training_video_id: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = KinematicsDataset.query
     if subject_id:
@@ -1653,7 +1864,9 @@ def list_kinematics_datasets_page(
                 KinematicsDataset.unit_csv_path.like(pattern),
             )
         )
-    query = query.order_by(KinematicsDataset.created_at.desc())
+    query = apply_sort_column(query, KinematicsDataset, "kinematics-datasets", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(KinematicsDataset.created_at.desc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_kinematics_dataset(row) for row in rows], total
 
@@ -1730,6 +1943,8 @@ def list_evaluations_page(
     max_score: int | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = EvaluationRecord.query
     if subject_id:
@@ -1759,7 +1974,9 @@ def list_evaluations_page(
                 EvaluationRecord.grade.like(pattern),
             )
         )
-    query = query.order_by(EvaluationRecord.created_at.desc())
+    query = apply_sort_column(query, EvaluationRecord, "evaluations", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(EvaluationRecord.created_at.desc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_evaluation(row) for row in rows], total
 
@@ -2120,6 +2337,8 @@ def list_accounts_page(
     status: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = Account.query
     if status:
@@ -2127,7 +2346,9 @@ def list_accounts_page(
     if keyword:
         pattern = f"%{keyword.strip()}%"
         query = query.filter(or_(Account.account.like(pattern), Account.username.like(pattern)))
-    query = query.order_by(Account.created_at.desc())
+    query = apply_sort_column(query, Account, "accounts", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(Account.created_at.desc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_account(row) for row in rows], total
 
@@ -2227,12 +2448,16 @@ def list_roles_page(
     keyword: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = Role.query
     if keyword:
         pattern = f"%{keyword.strip()}%"
         query = query.filter(or_(Role.code.like(pattern), Role.name.like(pattern)))
-    query = query.order_by(Role.code.asc())
+    query = apply_sort_column(query, Role, "roles", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(Role.code.asc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_role(row) for row in rows], total
 
@@ -2307,12 +2532,16 @@ def list_permissions_page(
     keyword: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[list[dict[str, Any]], int]:
     query = Permission.query
     if keyword:
         pattern = f"%{keyword.strip()}%"
         query = query.filter(or_(Permission.code.like(pattern), Permission.name.like(pattern)))
-    query = query.order_by(Permission.code.asc())
+    query = apply_sort_column(query, Permission, "permissions", sort_by, sort_order)
+    if not sort_by:
+        query = query.order_by(Permission.code.asc())
     rows, total = paginate_query(query, limit=limit, offset=offset)
     return [serialize_permission(row) for row in rows], total
 

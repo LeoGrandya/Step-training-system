@@ -46,6 +46,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { NAV_ITEMS, TRAINING_DROPDOWN } from '../router/nav.js';
 import { isLoggedIn } from '../router/guard.js';
 import { getCurrentSubjectId, setCurrentSubjectId } from '../stores/storage.js';
+import { notifySubjectChanged, subjectChangeCounter } from '../stores/subjectEvents.js';
 import { request } from '../services/api.js';
 
 const logoUrl = '/assets/img/huibu-logo.png';
@@ -69,7 +70,7 @@ async function loadSubjects() {
     if (!subExists && subjects.value.length) {
       currentSubjectId.value = subjects.value[0].id;
       setCurrentSubjectId(subjects.value[0].id);
-      window.dispatchEvent(new CustomEvent('subject-changed', { detail: subjects.value[0] }));
+      notifySubjectChanged();
     }
   } catch { subjects.value = []; }
 }
@@ -78,7 +79,7 @@ function switchSubject(sub) {
   currentSubjectId.value = sub.id;
   setCurrentSubjectId(sub.id);
   subOpen.value = false;
-  window.dispatchEvent(new CustomEvent('subject-changed', { detail: sub }));
+  notifySubjectChanged();
 }
 
 function openDropdown() { dropdownOpen.value = true; }
@@ -89,11 +90,8 @@ function onSubChanged() { loadSubjects(); }
 watch(isLoggedIn, (val) => { if (val) loadSubjects(); });
 onMounted(() => {
   if (isLoggedIn.value) loadSubjects();
-  window.addEventListener('subject-changed', onSubChanged);
 });
-onBeforeUnmount(() => {
-  window.removeEventListener('subject-changed', onSubChanged);
-});
+watch(subjectChangeCounter, onSubChanged);
 </script>
 
 <style scoped>

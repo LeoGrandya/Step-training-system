@@ -53,6 +53,7 @@ import ProfileForm from '../components/ProfileForm.vue';
 import TrainingGrid from '../components/TrainingGrid.vue';
 import { getProfile, getTrainingMode, saveProfile, saveTrainingMode, getCurrentSubjectId } from '../stores/storage.js';
 import { request } from '../services/api.js';
+import { subjectChangeCounter } from '../stores/subjectEvents.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -141,12 +142,8 @@ function replayGuide() {
 onMounted(async () => {
   setTrainingHasMode(() => Boolean(selectedMode.value));
   await loadSubjectProfile();
-  window.addEventListener('subject-changed', loadSubjectProfile);
 });
-
-onBeforeUnmount(() => {
-  window.removeEventListener('subject-changed', loadSubjectProfile);
-});
+watch(subjectChangeCounter, loadSubjectProfile);
 
 watch(selectedMode, () => {
   setTrainingHasMode(() => Boolean(selectedMode.value));

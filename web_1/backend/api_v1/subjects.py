@@ -42,6 +42,9 @@ def register(bp: Blueprint) -> None:
         page = parse_pagination(request.args, default_limit=30)
         hand = (request.args.get("hand") or "").strip() or None
         level = (request.args.get("level") or "").strip() or None
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
+
         items, total = repo.list_subjects_page(
             keyword=page.keyword,
             is_active=page.is_active,
@@ -50,8 +53,24 @@ def register(bp: Blueprint) -> None:
             level=level,
             limit=page.limit,
             offset=page.offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+        # Build filter aggregation for the filter panel
+        base = repo.Subject.query
+        base = repo.active_filter(base, repo.Subject, is_active=page.is_active)
+        aid = _account_id()
+        if aid:
+            base = base.filter(repo.Subject.created_by_account_id == aid)
+        base = repo.keyword_filter(base, repo.Subject, repo.Subject.name, page.keyword)
+        filters_data = repo.build_filter_aggregation(
+            base, repo.Subject, "subjects",
+            {"hand": hand, "level": level},
+        )
+
+        return list_response(items, total=total, limit=page.limit, offset=page.offset,
+                            extra={"filters": filters_data})
 
     @bp.post("/subjects")
     def create_subject():

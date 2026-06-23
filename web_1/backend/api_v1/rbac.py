@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, request
+from sqlalchemy import or_
 
 from backend import repositories as repo
 from backend.api_utils import json_err, json_ok, list_response, parse_pagination
@@ -23,13 +24,29 @@ def register(bp: Blueprint) -> None:
     @bp.get("/accounts")
     def list_accounts():
         page = parse_pagination(request.args, default_limit=50)
+        status = (request.args.get("status") or "").strip() or None
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
         items, total = repo.list_accounts_page(
             keyword=page.keyword,
-            status=(request.args.get("status") or "").strip() or None,
+            status=status,
             limit=page.limit,
             offset=page.offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+        base = repo.Account.query
+        if page.keyword:
+            pattern = f"%{page.keyword.strip()}%"
+            base = base.filter(or_(repo.Account.account.like(pattern), repo.Account.username.like(pattern)))
+        filters_data = repo.build_filter_aggregation(
+            base, repo.Account, "accounts",
+            {"status": status},
+        )
+
+        return list_response(items, total=total, limit=page.limit, offset=page.offset,
+                            extra={"filters": filters_data})
 
     @bp.post("/accounts")
     def create_account():
@@ -99,7 +116,10 @@ def register(bp: Blueprint) -> None:
     @bp.get("/roles")
     def list_roles():
         page = parse_pagination(request.args, default_limit=50)
-        items, total = repo.list_roles_page(keyword=page.keyword, limit=page.limit, offset=page.offset)
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
+        items, total = repo.list_roles_page(keyword=page.keyword, limit=page.limit, offset=page.offset,
+                                            sort_by=sort_by, sort_order=sort_order)
         return list_response(items, total=total, limit=page.limit, offset=page.offset)
 
     @bp.post("/roles")
@@ -174,7 +194,10 @@ def register(bp: Blueprint) -> None:
     @bp.get("/permissions")
     def list_permissions():
         page = parse_pagination(request.args, default_limit=50)
-        items, total = repo.list_permissions_page(keyword=page.keyword, limit=page.limit, offset=page.offset)
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
+        items, total = repo.list_permissions_page(keyword=page.keyword, limit=page.limit, offset=page.offset,
+                                                  sort_by=sort_by, sort_order=sort_order)
         return list_response(items, total=total, limit=page.limit, offset=page.offset)
 
     @bp.post("/permissions")

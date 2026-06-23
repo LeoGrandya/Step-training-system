@@ -102,7 +102,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AnalysisUploadZone from '../components/AnalysisUploadZone.vue'
 import AnalysisParamsPanel from '../components/AnalysisParamsPanel.vue'
@@ -115,6 +115,7 @@ import {
   clearAnalysisGuard,
 } from '../composables/useAnalysisJob.js'
 import { saveTrainingMode, getTrainingMode, saveCurrentJobId, getCurrentUserId, getCurrentSubjectId, setCurrentSubjectId } from '../stores/storage.js'
+import { notifySubjectChanged, subjectChangeCounter } from '../stores/subjectEvents.js'
 
 const router = useRouter()
 const upload = useAnalysisUpload()
@@ -159,7 +160,7 @@ async function ensureUser() {
       if (items.length) {
         subjectId = items[0].id
         setCurrentSubjectId(subjectId)
-        window.dispatchEvent(new CustomEvent('subject-changed', { detail: items[0] }))
+        notifySubjectChanged()
       }
     } catch { /* 网络失败继续往下，由 !subjectId 返回 false */ }
   }
@@ -260,7 +261,7 @@ onMounted(async () => {
   fetchUserName()
 
   // 先注册监听，确保捕获 SiteNav 的初始 subject-changed 事件
-  window.addEventListener('subject-changed', onSubjectChanged)
+  watch(subjectChangeCounter, onSubjectChanged)
 
   // 确保有可用用户（注册/登录），失败则阻断操作
   const ok = await ensureUser()
@@ -291,7 +292,6 @@ async function onSubjectChanged(e) {
 
 onUnmounted(() => {
   disableLeaveGuard()
-  window.removeEventListener('subject-changed', onSubjectChanged)
 })
 </script>
 

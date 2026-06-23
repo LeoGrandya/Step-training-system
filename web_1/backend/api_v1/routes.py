@@ -38,14 +38,34 @@ def register(bp: Blueprint) -> None:
     def list_routes():
         page = parse_pagination(request.args, default_limit=30)
         footwork_type_id = (request.args.get("footworkTypeId") or request.args.get("footwork_type_id") or "").strip()
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
         items, total = repo.list_routes_page(
             keyword=page.keyword,
             footwork_type_id=footwork_type_id or None,
             account_id=_account_id(),
             limit=page.limit,
             offset=page.offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+        base = repo.RouteDefinition.query.filter(repo.RouteDefinition.is_active.is_(True))
+        if page.keyword:
+            pattern = f"%{page.keyword.strip()}%"
+            from sqlalchemy import or_
+            base = base.filter(or_(
+                repo.RouteDefinition.name.like(pattern),
+                repo.RouteDefinition.sequence.like(pattern),
+                repo.RouteDefinition.action_requirements.like(pattern),
+            ))
+        filters_data = repo.build_filter_aggregation(
+            base, repo.RouteDefinition, "routes",
+            {"footworkTypeId": footwork_type_id or None},
+        )
+
+        return list_response(items, total=total, limit=page.limit, offset=page.offset,
+                            extra={"filters": filters_data})
 
     @bp.post("/routes")
     def create_route():

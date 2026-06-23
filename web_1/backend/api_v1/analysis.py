@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from flask import Blueprint, request, send_file
+from sqlalchemy import or_
 
 from backend import repositories as repo
 from backend.api_utils import get_account_id_from_headers as _account_id, json_err, json_ok, list_response, parse_pagination
@@ -39,19 +40,37 @@ def register(bp: Blueprint) -> None:
     @bp.get("/kinematics-datasets")
     def list_kinematics_datasets():
         page = parse_pagination(request.args, default_limit=30)
+        sid = (request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
         items, total = repo.list_kinematics_datasets_page(
             keyword=page.keyword,
-            subject_id=(request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None,
+            subject_id=sid,
             subject_ids=_account_subject_ids(),
             job_id=(request.args.get("jobId") or request.args.get("job_id") or "").strip() or None,
             training_video_id=(
                 request.args.get("trainingVideoId") or request.args.get("training_video_id") or ""
-            ).strip()
-            or None,
+            ).strip() or None,
             limit=page.limit,
             offset=page.offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+        base = repo.KinematicsDataset.query
+        if page.keyword:
+            pattern = f"%{page.keyword.strip()}%"
+            base = base.filter(or_(
+                repo.KinematicsDataset.id.like(pattern),
+                repo.KinematicsDataset.job_id.like(pattern),
+            ))
+        filters_data = repo.build_filter_aggregation(
+            base, repo.KinematicsDataset, "kinematics-datasets",
+            {"subjectId": sid},
+        )
+
+        return list_response(items, total=total, limit=page.limit, offset=page.offset,
+                            extra={"filters": filters_data})
 
     @bp.get("/kinematics-datasets/<dataset_id>")
     def get_kinematics_dataset(dataset_id: str):

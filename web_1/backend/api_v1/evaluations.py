@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, request
+from sqlalchemy import or_
 
 from backend import repositories as repo
 from backend.api_utils import get_account_id_from_headers as _account_id, json_err, json_ok, list_response, parse_pagination
@@ -43,29 +44,48 @@ def register(bp: Blueprint) -> None:
     @bp.get("/evaluations")
     def list_evaluations():
         page = parse_pagination(request.args, default_limit=30)
+        sid = (request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None
+        grade = (request.args.get("grade") or "").strip() or None
+        sort_by = (request.args.get("sortBy") or "").strip() or None
+        sort_order = (request.args.get("sortOrder") or "asc").strip()
         items, total = repo.list_evaluations_page(
             keyword=page.keyword,
-            subject_id=(request.args.get("subjectId") or request.args.get("subject_id") or "").strip() or None,
+            subject_id=sid,
             subject_ids=_account_subject_ids(),
             analysis_job_id=(request.args.get("analysisJobId") or request.args.get("analysis_job_id") or "").strip()
             or None,
             kinematics_dataset_id=(
                 request.args.get("kinematicsDatasetId") or request.args.get("kinematics_dataset_id") or ""
-            ).strip()
-            or None,
+            ).strip() or None,
             footwork_type_id=(request.args.get("footworkTypeId") or request.args.get("footwork_type_id") or "").strip()
             or None,
             route_definition_id=(
                 request.args.get("routeDefinitionId") or request.args.get("route_definition_id") or ""
-            ).strip()
-            or None,
-            grade=(request.args.get("grade") or "").strip() or None,
+            ).strip() or None,
+            grade=grade,
             min_score=_int_query("minScore"),
             max_score=_int_query("maxScore"),
             limit=page.limit,
             offset=page.offset,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
-        return list_response(items, total=total, limit=page.limit, offset=page.offset)
+
+        base = repo.EvaluationRecord.query
+        if page.keyword:
+            pattern = f"%{page.keyword.strip()}%"
+            base = base.filter(or_(
+                repo.EvaluationRecord.id.like(pattern),
+                repo.EvaluationRecord.analysis_job_id.like(pattern),
+                repo.EvaluationRecord.grade.like(pattern),
+            ))
+        filters_data = repo.build_filter_aggregation(
+            base, repo.EvaluationRecord, "evaluations",
+            {"subjectId": sid, "grade": grade},
+        )
+
+        return list_response(items, total=total, limit=page.limit, offset=page.offset,
+                            extra={"filters": filters_data})
 
     @bp.post("/evaluations")
     def create_evaluation():
